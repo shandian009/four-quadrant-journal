@@ -43,6 +43,13 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npx electron-builder --win portable --x64
 
+      - name: Smoke test packaged executable
+        working-directory: app
+        shell: pwsh
+        run: |
+          $env:PACKAGED_APP_PATH = (Resolve-Path "release/win-unpacked/四象日志.exe").Path
+          npx playwright test tests/e2e/packaged-smoke.spec.ts
+
       - name: Upload portable executable
         uses: actions/upload-artifact@v4
         with:
