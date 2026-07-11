@@ -20,7 +20,7 @@ jobs:
 
       - name: Extract source
         shell: pwsh
-        run: Expand-Archive -Path FourQuadrantJournal-0.1.0-source.zip -DestinationPath app -Force
+        run: Expand-Archive -Path FourQuadrantJournal-0.1.1-source.zip -DestinationPath app -Force
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -57,7 +57,7 @@ jobs:
           $env:FOUR_QUADRANT_USER_DATA = Join-Path $env:RUNNER_TEMP "four-quadrant-portable-user-data"
           $env:E2E_EXIT_ON_CLOSE = "1"
           $env:ELECTRON_ENABLE_LOGGING = "1"
-          $launcher = (Resolve-Path "release/FourQuadrantJournal-0.1.0-win-x64.exe").Path
+          $launcher = (Resolve-Path "release/FourQuadrantJournal-0.1.1-win-x64.exe").Path
           $launcherProcess = Start-Process -FilePath $launcher -PassThru
           $deadline = (Get-Date).AddSeconds(90)
           $visibleProcess = $null
@@ -84,15 +84,15 @@ jobs:
       - name: Upload single-file portable executable
         uses: actions/upload-artifact@v4
         with:
-          name: FourQuadrantJournal-0.1.0-portable
-          path: app/release/FourQuadrantJournal-0.1.0-win-x64.exe
+          name: FourQuadrantJournal-0.1.1-portable
+          path: app/release/FourQuadrantJournal-0.1.1-win-x64.exe
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload unpacked green folder
         uses: actions/upload-artifact@v4
         with:
-          name: FourQuadrantJournal-0.1.0-unpacked-green
+          name: FourQuadrantJournal-0.1.1-unpacked-green
           path: app/release/win-unpacked/**
           if-no-files-found: error
           retention-days: 30
