@@ -19,13 +19,13 @@ describe('GitHub workflow configuration', () => {
     expect(workflow).not.toMatch(/electron-builder|Expand-Archive|source\.zip|npm run verify(?:\s|$)/m);
   });
 
-  it('limits the Windows release to manual dispatch and v-prefixed tags', () => {
+  it('limits the Windows release to manual dispatch, tags and explicit release branches', () => {
     const workflow = read('.github/workflows/release-windows.yml');
 
     expect(workflow).toMatch(/workflow_dispatch:/);
     expect(workflow).toMatch(/push:\s*\n\s+tags:\s*\['v\*'\]/);
-    expect(workflow).not.toMatch(/branches:/);
-    expect(workflow).not.toMatch(/pull_request:/);
+    expect(workflow).toMatch(/pull_request:\s*\n\s+branches:\s*\[main\]/);
+    expect(workflow).toContain("startsWith(github.head_ref, 'release/')");
   });
 
   it('orders install, helper compile, one full gate, portable build and three Windows E2E gates before upload', () => {
