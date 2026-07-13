@@ -21,6 +21,11 @@ interface HostStatus {
   style: string;
 }
 
+interface HostInspection extends HostStatus {
+  originalParent: string;
+  originalStyle: string;
+}
+
 async function nativeWindowState(application: ElectronApplication): Promise<NativeWindowState> {
   return application.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0];
@@ -59,17 +64,38 @@ test('desktop mode attaches the real window, applies opacity and restores safely
     application = await launchPackagedApp(userData);
     let page = await application.firstWindow({ timeout: 20_000 });
     await expect(page.getByRole('heading', { name: '今日工作台' })).toBeVisible({ timeout: 10_000 });
-    await page.getByRole('button', { name: '嵌入桌面' }).click();
-    await expect(page.getByRole('button', { name: '恢复窗口' })).toBeVisible({ timeout: 10_000 });
 
-    const attachedWindow = await nativeWindowState(application);
+    const initialWindow = await nativeWindowState(application);
     const helperPath = path.join(
-      attachedWindow.resourcesPath,
+      initialWindow.resourcesPath,
       'app.asar.unpacked',
       'build',
       'desktop-host.exe'
     );
     expect(existsSync(helperPath)).toBe(true);
+    const inspection = JSON.parse(execFileSync(helperPath, ['inspect', initialWindow.hwnd], {
+      encoding: 'utf8', windowsHide: true
+    })) as HostInspection;
+
+    await page.getByRole('button', { name: '嵌入桌面' }).click();
+    const restoreButton = page.getByRole('button', { name: '恢复窗口' });
+    try {
+      await expect(restoreButton).toBeVisible({ timeout: 10_000 });
+    } catch (uiError) {
+      try {
+        execFileSync(helperPath, ['attach', initialWindow.hwnd], { encoding: 'utf8', windowsHide: true });
+        execFileSync(helperPath, [
+          'detach', initialWindow.hwnd, inspection.originalParent, inspection.originalStyle
+        ], { encoding: 'utf8', windowsHide: true });
+      } catch (nativeError) {
+        const output = `${(nativeError as { stdout?: string }).stdout ?? ''}${(nativeError as { stderr?: string }).stderr ?? ''}`;
+        test.skip(/找不到 (?:Progman|WorkerW)/.test(output), `托管测试机缺少可交互桌面层：${output.trim()}`);
+        throw new Error(`桌面助手拒绝嵌入：${output.trim()}`, { cause: nativeError });
+      }
+      throw uiError;
+    }
+
+    const attachedWindow = await nativeWindowState(application);
     await expect.poll(() => getHostStatus(helperPath, attachedWindow.hwnd).parent).not.toBe('0');
     expect(getHostStatus(helperPath, attachedWindow.hwnd).success).toBe(true);
 
