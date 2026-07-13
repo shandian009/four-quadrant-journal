@@ -32,7 +32,7 @@ try {
   } while (-not $appProcess -and (Get-Date) -lt $deadline)
 
   if (-not $appProcess) {
-    throw "单文件绿色版在 $TimeoutSeconds 秒内未显示“四象日志”主窗口。"
+    throw ('单文件绿色版在 {0} 秒内未显示四象日志主窗口。' -f $TimeoutSeconds)
   }
 
   Write-Host "单文件绿色版启动成功：PID=$($appProcess.Id)，窗口=$($appProcess.MainWindowTitle)"
