@@ -69,7 +69,7 @@ describe('GitHub workflow configuration', () => {
     expect(e2e).toMatch(/desktop-host\.exe/);
     expect(e2e).toMatch(/['"]status['"]/);
     expect(e2e).toMatch(/['"]attach['"]/);
-    expect(e2e).toMatch(/test\.skip\(\/找不到 \(\?:Progman\|WorkerW\)\//);
+    expect(e2e).toMatch(/\/找不到 \(\?:Progman\|WorkerW\)\/[\s\S]*test\.skip\(true[\s\S]*return;/);
     expect(e2e).toContain("['0.4', '0.85', '1']");
     expect(e2e).toMatch(/parent\)\.not\.toBe\('0'\)/);
     expect(e2e).toMatch(/parent\)\.toBe\('0'\)/);
