@@ -42,11 +42,11 @@ jobs:
         run: |
           $env:PACKAGED_APP_PATH = (Resolve-Path 'release/win-unpacked/四象日志.exe').Path
           npx playwright test tests/e2e/packaged-smoke.spec.ts
-      - name: Run portable single-file E2E
+      - name: Verify portable single-file launch
         shell: pwsh
         run: |
-          $env:PACKAGED_APP_PATH = (Get-ChildItem 'release/FourQuadrantJournal-*-win-x64.exe' | Select-Object -First 1).FullName
-          npx playwright test tests/e2e/packaged-smoke.spec.ts
+          $portable = (Get-ChildItem 'release/FourQuadrantJournal-*-win-x64.exe' | Select-Object -First 1).FullName
+          ./scripts/verify-portable-launch.ps1 -PortablePath $portable
       - name: Run desktop-mode E2E
         shell: pwsh
         run: |
