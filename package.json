@@ -1,0 +1,63 @@
+{
+  "name": "four-quadrant-journal",
+  "version": "0.3.0",
+  "private": true,
+  "description": "四象日志 Windows 桌面应用",
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build:renderer": "vite build",
+    "build:electron": "tsup",
+    "build:desktop-host:win": "powershell -NoProfile -Command \"$ErrorActionPreference = 'Stop'; dotnet new console --force --output native/desktop-host/build --framework net8.0; Copy-Item native/desktop-host/Program.cs native/desktop-host/build/Program.cs -Force; dotnet publish native/desktop-host/build -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:AssemblyName=desktop-host; New-Item -ItemType Directory -Force build | Out-Null; Copy-Item native/desktop-host/build/bin/Release/net8.0/win-x64/publish/desktop-host.exe build/desktop-host.exe -Force\"",
+    "build": "npm run build:renderer && npm run build:electron",
+    "start": "npm run build && electron .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test tests/e2e",
+    "typecheck": "tsc --noEmit",
+    "verify:theme-parity": "node --import tsx scripts/verify-theme-parity.ts",
+    "verify:no-network": "node --import tsx scripts/verify-no-network.ts",
+    "verify:source": "npm run typecheck && npm run test && npm run build && npm run verify:theme-parity && npm run verify:no-network",
+    "verify:changed": "node --import tsx scripts/changed-tests.ts",
+    "verify": "npm run verify:source",
+    "dist:win": "npm run build && electron-builder --win nsis --x64"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.11.1",
+    "date-fns": "4.1.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
+    "@playwright/test": "1.61.1",
+    "@types/node": "24.10.13",
+    "@types/better-sqlite3": "7.6.13",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.1.4",
+    "electron": "43.1.0",
+    "electron-builder": "26.15.3",
+    "jsdom": "28.0.0",
+    "tsup": "8.5.1",
+    "tsx": "4.23.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vitest": "4.1.10"
+  },
+  "build": {
+    "appId": "com.fourquadrant.journal",
+    "productName": "四象日志",
+    "asar": true,
+    "files": ["dist/**/*", "dist-electron/**/*", "build/icon.png", "build/desktop-host.exe", "package.json"],
+    "asarUnpack": ["node_modules/better-sqlite3/**/*", "build/desktop-host.exe"],
+    "directories": { "output": "release", "buildResources": "build" },
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "build/icon.ico" },
+    "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true },
+    "artifactName": "FourQuadrantJournal-${version}-win-x64.${ext}"
+  }
+}

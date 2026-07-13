@@ -1,0 +1,16 @@
+node_modules/
+dist/
+release/
+build/desktop-host.exe
+coverage/
+.superpowers/
+.playwright-browsers/
+*.db
+*.db-shm
+*.db-wal
+*.log
+FourQuadrantJournal-*-source.zip
+FourQuadrantJournal-*-portable.zip
+FourQuadrantJournal-*-artifact.zip
+FourQuadrantJournal-*-green-folder.zip
+FourQuadrantJournal-*-win-x64.exe
