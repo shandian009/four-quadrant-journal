@@ -48,6 +48,7 @@ describe('GitHub workflow configuration', () => {
     expect(workflow.match(/tests\/e2e\/packaged-smoke\.spec\.ts/g)).toHaveLength(1);
     expect(workflow).toMatch(/scripts\/verify-portable-launch\.ps1/);
     expect(existsSync('scripts/verify-portable-launch.ps1')).toBe(true);
+    expect(read('scripts/verify-portable-launch.ps1')).not.toMatch(/[“”]/);
     expect(workflow.match(/tests\/e2e\/desktop-mode\.spec\.ts/g)).toHaveLength(1);
     expect(existsSync('tests/e2e/desktop-mode.spec.ts')).toBe(true);
     expect(workflow).not.toMatch(/E2E_DESKTOP_STATE/);
