@@ -30,7 +30,7 @@ npm start
 npm run dist:win
 ```
 
-输出文件位于 `release/FourQuadrantJournal-0.1.0-win-x64.exe`。
+输出文件位于 `release/FourQuadrantJournal-0.2.0-win-x64.exe`。
 
 ## 数据位置
 

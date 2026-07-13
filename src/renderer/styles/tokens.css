@@ -1,0 +1,11 @@
+:root {
+  font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+  font-synthesis: none;
+  color: var(--text);
+  background: var(--canvas);
+}
+
+* { box-sizing: border-box; }
+html, body, #root { width: 100%; min-width: 1280px; height: 100%; min-height: 720px; margin: 0; }
+button, input, textarea { font: inherit; }
+button { color: inherit; }
