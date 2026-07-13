@@ -36,7 +36,7 @@ describe('GitHub workflow configuration', () => {
       'npm run verify',
       'electron-builder --win portable --x64',
       'name: Run unpacked E2E',
-      'name: Run portable single-file E2E',
+      'name: Verify portable single-file launch',
       'name: Run desktop-mode E2E',
       'actions/upload-artifact@v4'
     ];
@@ -45,7 +45,9 @@ describe('GitHub workflow configuration', () => {
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((left, right) => left - right));
     expect(workflow.match(/npm run verify(?!:)/g)).toHaveLength(1);
-    expect(workflow.match(/tests\/e2e\/packaged-smoke\.spec\.ts/g)).toHaveLength(2);
+    expect(workflow.match(/tests\/e2e\/packaged-smoke\.spec\.ts/g)).toHaveLength(1);
+    expect(workflow).toMatch(/scripts\/verify-portable-launch\.ps1/);
+    expect(existsSync('scripts/verify-portable-launch.ps1')).toBe(true);
     expect(workflow.match(/tests\/e2e\/desktop-mode\.spec\.ts/g)).toHaveLength(1);
     expect(existsSync('tests/e2e/desktop-mode.spec.ts')).toBe(true);
     expect(workflow).not.toMatch(/E2E_DESKTOP_STATE/);
