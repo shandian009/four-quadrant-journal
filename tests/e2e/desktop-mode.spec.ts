@@ -89,11 +89,15 @@ test('desktop mode attaches the real window, applies opacity and restores safely
         ], { encoding: 'utf8', windowsHide: true });
       } catch (nativeError) {
         const output = `${(nativeError as { stdout?: string }).stdout ?? ''}${(nativeError as { stderr?: string }).stderr ?? ''}`;
-        if (/找不到 (?:Progman|WorkerW)/.test(output)) {
-          test.skip(true, `托管测试机缺少可交互桌面层：${output.trim()}`);
+        let diagnostic = output.trim();
+        try {
+          diagnostic = (JSON.parse(diagnostic) as { message?: string }).message ?? diagnostic;
+        } catch { /* preserve raw helper output */ }
+        if (/找不到 (?:Progman|WorkerW)/.test(diagnostic)) {
+          test.skip(true, `托管测试机缺少可交互桌面层：${diagnostic}`);
           return;
         }
-        throw new Error(`桌面助手拒绝嵌入：${output.trim()}`, { cause: nativeError });
+        throw new Error(`桌面助手拒绝嵌入：${diagnostic}`, { cause: nativeError });
       }
       throw uiError;
     }
