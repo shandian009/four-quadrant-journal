@@ -50,6 +50,16 @@ jobs:
       - name: Run desktop-mode E2E
         shell: pwsh
         run: |
+          $explorer = Get-Process explorer -ErrorAction SilentlyContinue
+          if (-not $explorer) {
+            Start-Process explorer.exe
+            $deadline = (Get-Date).AddSeconds(20)
+            do {
+              Start-Sleep -Milliseconds 500
+              $explorer = Get-Process explorer -ErrorAction SilentlyContinue
+            } while (-not $explorer -and (Get-Date) -lt $deadline)
+          }
+          if (-not $explorer) { throw 'Windows Explorer desktop shell did not start' }
           $env:PACKAGED_APP_PATH = (Resolve-Path 'release/win-unpacked/四象日志.exe').Path
           npx playwright test tests/e2e/desktop-mode.spec.ts
       - name: Prepare green-folder artifact
