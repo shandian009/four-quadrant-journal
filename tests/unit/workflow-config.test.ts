@@ -19,13 +19,13 @@ describe('GitHub workflow configuration', () => {
     expect(workflow).not.toMatch(/electron-builder|Expand-Archive|source\.zip|npm run verify(?:\s|$)/m);
   });
 
-  it('limits the Windows release to manual dispatch and v-prefixed tags', () => {
+  it('limits the Windows release to manual dispatch, tags and explicit release branches', () => {
     const workflow = read('.github/workflows/release-windows.yml');
 
     expect(workflow).toMatch(/workflow_dispatch:/);
     expect(workflow).toMatch(/push:\s*\n\s+tags:\s*\['v\*'\]/);
-    expect(workflow).not.toMatch(/branches:/);
-    expect(workflow).not.toMatch(/pull_request:/);
+    expect(workflow).toMatch(/pull_request:\s*\n\s+branches:\s*\[main\]/);
+    expect(workflow).toContain("startsWith(github.head_ref, 'release/')");
   });
 
   it('orders install, helper compile, one full gate, portable build and three Windows E2E gates before upload', () => {
@@ -36,7 +36,7 @@ describe('GitHub workflow configuration', () => {
       'npm run verify',
       'electron-builder --win portable --x64',
       'name: Run unpacked E2E',
-      'name: Run portable single-file E2E',
+      'name: Verify portable single-file launch',
       'name: Run desktop-mode E2E',
       'actions/upload-artifact@v4'
     ];
@@ -45,8 +45,13 @@ describe('GitHub workflow configuration', () => {
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((left, right) => left - right));
     expect(workflow.match(/npm run verify(?!:)/g)).toHaveLength(1);
-    expect(workflow.match(/tests\/e2e\/packaged-smoke\.spec\.ts/g)).toHaveLength(2);
+    expect(workflow.match(/tests\/e2e\/packaged-smoke\.spec\.ts/g)).toHaveLength(1);
+    expect(workflow).toMatch(/scripts\/verify-portable-launch\.ps1/);
+    expect(existsSync('scripts/verify-portable-launch.ps1')).toBe(true);
+    expect(read('scripts/verify-portable-launch.ps1')).not.toMatch(/[“”]/);
     expect(workflow.match(/tests\/e2e\/desktop-mode\.spec\.ts/g)).toHaveLength(1);
+    expect(workflow).toMatch(/Start-Process[^\n]*explorer\.exe/i);
+    expect(workflow).toMatch(/Get-Process[^\n]*explorer/i);
     expect(existsSync('tests/e2e/desktop-mode.spec.ts')).toBe(true);
     expect(workflow).not.toMatch(/E2E_DESKTOP_STATE/);
   });
@@ -63,6 +68,9 @@ describe('GitHub workflow configuration', () => {
     expect(e2e).toMatch(/getOpacity/);
     expect(e2e).toMatch(/desktop-host\.exe/);
     expect(e2e).toMatch(/['"]status['"]/);
+    expect(e2e).toMatch(/['"]attach['"]/);
+    expect(e2e).toMatch(/JSON\.parse\(diagnostic\)/);
+    expect(e2e).toMatch(/\/找不到 \(\?:Progman\|WorkerW\)\/[\s\S]*test\.skip\(true[\s\S]*return;/);
     expect(e2e).toContain("['0.4', '0.85', '1']");
     expect(e2e).toMatch(/parent\)\.not\.toBe\('0'\)/);
     expect(e2e).toMatch(/parent\)\.toBe\('0'\)/);
