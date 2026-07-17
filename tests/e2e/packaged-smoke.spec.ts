@@ -37,7 +37,13 @@ test('packaged Windows app supports the core workbench flow and restart', async 
     const originalThemeLabel = await themeButton.getAttribute('aria-label');
     expect(originalThemeLabel).toBeTruthy();
     await themeButton.click();
-    await expect(themeButton).not.toHaveAttribute('aria-label', originalThemeLabel!);
+    const themeOptions = window.getByRole('menuitemradio');
+    await expect(themeOptions).toHaveCount(6);
+    const targetTheme = originalThemeLabel!.includes('周一 · 冷启动')
+      ? '周六 · 松弛复盘'
+      : '周一 · 冷启动';
+    await window.getByRole('menuitemradio', { name: targetTheme }).click();
+    await expect(themeButton).toHaveAttribute('aria-label', `切换皮肤，当前：${targetTheme}`);
 
     const calendarHeading = window.getByRole('region', { name: '月历' }).getByRole('heading');
     const originalMonth = await calendarHeading.textContent();
