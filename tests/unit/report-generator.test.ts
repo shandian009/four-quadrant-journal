@@ -70,7 +70,7 @@ describe('reportPeriod', () => {
 });
 
 describe('generateLocalReport', () => {
-  it('uses only real weekly records, reports exact totals, and stays within 180–240 Chinese characters', () => {
+  it('uses the fixed six-section weekly template and stays near 300 Chinese characters', () => {
     const generated = generateLocalReport({
       kind: 'weekly',
       startDate: '2026-07-06',
@@ -80,13 +80,23 @@ describe('generateLocalReport', () => {
     }, () => new Date('2030-01-02T03:04:05.000Z'));
 
     expect(generated.generatedAt).toBe('2030-01-02T03:04:05.000Z');
+    expect(generated.text.match(/【[^】]+】/g)).toEqual([
+      '【本周工作概况】',
+      '【重点成果】',
+      '【工作进展】',
+      '【问题与风险】',
+      '【下周工作计划】',
+      '【复盘总结】'
+    ]);
     expect(generated.text).toContain('事项共3项，完成2项');
     expect(generated.text).toContain('完成客户迁移方案');
     expect(generated.text).toContain('确认供应商延期风险');
     expect(generated.text).not.toContain('准备月度经营复盘');
     expect(generated.text).not.toContain('取得突破');
-    expect(chineseCharacters(generated.text)).toBeGreaterThanOrEqual(180);
-    expect(chineseCharacters(generated.text)).toBeLessThanOrEqual(240);
+    expect(generated.text).toContain('风险同步还可以更早');
+    expect(generated.text).toContain('先处理供应商延期风险');
+    expect(chineseCharacters(generated.text)).toBeGreaterThanOrEqual(260);
+    expect(chineseCharacters(generated.text)).toBeLessThanOrEqual(340);
   });
 
   it('builds a factual month report with distribution, weekly progress and 540–660 Chinese characters', () => {
@@ -108,7 +118,7 @@ describe('generateLocalReport', () => {
     expect(chineseCharacters(generated.text)).toBeLessThanOrEqual(660);
   });
 
-  it('keeps at least one complete real achievement when several medium-length weekly titles do not fit together', () => {
+  it('never cuts a weekly task title in the middle when long titles need trimming', () => {
     const achievementTitles = [
       '完成跨部门客户迁移方案并核对历史数据归档规则与异常记录处理流程确保后续交付可以按计划稳定推进',
       '整理下半年产品路线图并完成业务目标技术依赖与交付节点的逐项核对为后续排期提供准确依据',
@@ -130,13 +140,12 @@ describe('generateLocalReport', () => {
     });
 
     const quotedTitles = [...generated.text.matchAll(/“([^”]+)”/g)].map((match) => match[1]);
-    expect(generated.text).toContain('主要成果：');
-    expect(quotedTitles.length).toBeGreaterThanOrEqual(1);
+    expect(generated.text).toContain('【重点成果】');
     expect(quotedTitles.length).toBeLessThan(achievementTitles.length);
     expect(quotedTitles.every((title) => achievementTitles.includes(title))).toBe(true);
     expect(generated.text.split('\n\n').every((paragraph) => /[。！？]$/.test(paragraph))).toBe(true);
-    expect(chineseCharacters(generated.text)).toBeGreaterThanOrEqual(180);
-    expect(chineseCharacters(generated.text)).toBeLessThanOrEqual(240);
+    expect(chineseCharacters(generated.text)).toBeGreaterThanOrEqual(260);
+    expect(chineseCharacters(generated.text)).toBeLessThanOrEqual(340);
   });
 
   it('keeps at least one complete real risk when several medium-length monthly titles do not fit together', () => {
@@ -171,15 +180,34 @@ describe('generateLocalReport', () => {
     expect(chineseCharacters(generated.text)).toBeLessThanOrEqual(660);
   });
 
-  it.each(['weekly', 'monthly'] as const)('is honest for empty %s data and states that records are sparse', (kind) => {
-    const period = kind === 'weekly'
-      ? { startDate: '2026-07-06', endDate: '2026-07-12' }
-      : { startDate: '2026-07-01', endDate: '2026-07-31' };
-    const generated = generateLocalReport({ kind, ...period, tasks: [], reviews: [] }, () => new Date('2030-01-02T03:04:05.000Z'));
+  it('keeps all six weekly sections for empty data without padding invented content', () => {
+    const generated = generateLocalReport({
+      kind: 'weekly',
+      startDate: '2026-07-06',
+      endDate: '2026-07-12',
+      tasks: [],
+      reviews: []
+    }, () => new Date('2030-01-02T03:04:05.000Z'));
 
     expect(generated.text).toContain('本周期记录较少');
     expect(generated.text).toContain('事项共0项，完成0项');
-    expect(chineseCharacters(generated.text)).toBeGreaterThanOrEqual(kind === 'weekly' ? 180 : 540);
-    expect(chineseCharacters(generated.text)).toBeLessThanOrEqual(kind === 'weekly' ? 240 : 660);
+    expect(generated.text.match(/【[^】]+】/g)).toHaveLength(6);
+    expect(generated.text.match(/暂无相关记录/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(chineseCharacters(generated.text)).toBeLessThan(260);
+  });
+
+  it('is honest for empty monthly data and keeps the established month length', () => {
+    const generated = generateLocalReport({
+      kind: 'monthly',
+      startDate: '2026-07-01',
+      endDate: '2026-07-31',
+      tasks: [],
+      reviews: []
+    }, () => new Date('2030-01-02T03:04:05.000Z'));
+
+    expect(generated.text).toContain('本周期记录较少');
+    expect(generated.text).toContain('事项共0项，完成0项');
+    expect(chineseCharacters(generated.text)).toBeGreaterThanOrEqual(540);
+    expect(chineseCharacters(generated.text)).toBeLessThanOrEqual(660);
   });
 });

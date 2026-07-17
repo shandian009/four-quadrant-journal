@@ -15,7 +15,7 @@ it('loads a persisted theme override', async () => {
   expect(await screen.findByText('周三 · 舒缓续航')).toBeVisible();
 });
 
-it('advances from the visible weekday when a today override has expired', async () => {
+it('can directly select any theme when a today override has expired', async () => {
   const user = userEvent.setup();
   const api = {
     reviews: { get: vi.fn().mockResolvedValue(null), save: vi.fn() },
@@ -29,9 +29,10 @@ it('advances from the visible weekday when a today override has expired', async 
 
   const button = await screen.findByRole('button', { name: '切换皮肤，当前：周二 · 渐入状态' });
   await user.click(button);
+  await user.click(screen.getByRole('menuitemradio', { name: '周六 · 松弛复盘' }));
 
-  expect(api.settings.set).toHaveBeenCalledWith('themeOverride', { themeId: 'wednesday', mode: 'persistent' });
-  expect(await screen.findByRole('button', { name: '切换皮肤，当前：周三 · 舒缓续航' })).toBeVisible();
+  expect(api.settings.set).toHaveBeenCalledWith('themeOverride', { themeId: 'saturday', mode: 'persistent' });
+  expect(await screen.findByRole('button', { name: '切换皮肤，当前：周六 · 松弛复盘' })).toBeVisible();
 });
 
 it('disables theme switching until the initial setting has loaded', async () => {
@@ -55,7 +56,8 @@ it('disables theme switching until the initial setting has loaded', async () => 
   const loadedButton = await screen.findByRole('button', { name: '切换皮肤，当前：周五 · 冲刺收官' });
   expect(loadedButton).toBeEnabled();
   await user.click(loadedButton);
-  expect(set).toHaveBeenCalledWith('themeOverride', { themeId: 'saturday', mode: 'persistent' });
+  await user.click(screen.getByRole('menuitemradio', { name: '周一 · 冷启动' }));
+  expect(set).toHaveBeenCalledWith('themeOverride', { themeId: 'monday', mode: 'persistent' });
 });
 
 it('reports an initial theme read failure and enables switching with the automatic theme', async () => {
@@ -86,10 +88,11 @@ it('replaces a read warning with a save warning and clears all warnings after a 
   const button = screen.getByRole('button', { name: '切换皮肤，当前：周二 · 渐入状态' });
 
   await user.click(button);
+  await user.click(screen.getByRole('menuitemradio', { name: '周三 · 舒缓续航' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('皮肤保存失败，请重试');
   expect(screen.queryByText('读取皮肤设置失败，已使用自动皮肤')).not.toBeInTheDocument();
 
-  await user.click(button);
+  await user.click(screen.getByRole('menuitemradio', { name: '周三 · 舒缓续航' }));
   expect(set).toHaveBeenCalledTimes(2);
   expect(await screen.findByRole('button', { name: '切换皮肤，当前：周三 · 舒缓续航' })).toBeVisible();
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();

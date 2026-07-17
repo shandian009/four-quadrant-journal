@@ -13,7 +13,7 @@ function settingsApi(): SettingsApi {
 }
 
 describe('workbench toolbar', () => {
-  it('persists the next concrete theme as a long-term override', async () => {
+  it('opens all six themes and directly persists any selected theme', async () => {
     const user = userEvent.setup();
     const settings = settingsApi();
     const onThemeChange = vi.fn();
@@ -28,14 +28,30 @@ describe('workbench toolbar', () => {
 
     await user.click(screen.getByRole('button', { name: '切换皮肤，当前：周一 · 冷启动' }));
 
+    const options = screen.getAllByRole('menuitemradio');
+    expect(options).toHaveLength(6);
+    const labels = [
+      '周一 · 冷启动',
+      '周二 · 渐入状态',
+      '周三 · 舒缓续航',
+      '周四 · 沉稳推进',
+      '周五 · 冲刺收官',
+      '周六 · 松弛复盘'
+    ];
+    labels.forEach((label) => expect(screen.getByRole('menuitemradio', { name: label })).toBeVisible());
+    expect(screen.getByRole('menuitemradio', { name: '周一 · 冷启动' })).toHaveAttribute('aria-checked', 'true');
+
+    await user.click(screen.getByRole('menuitemradio', { name: '周六 · 松弛复盘' }));
+
     expect(settings.set).toHaveBeenCalledWith('themeOverride', {
-      themeId: 'tuesday',
+      themeId: 'saturday',
       mode: 'persistent'
     });
-    expect(onThemeChange).toHaveBeenCalledWith({ themeId: 'tuesday', mode: 'persistent' });
+    expect(onThemeChange).toHaveBeenCalledWith({ themeId: 'saturday', mode: 'persistent' });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
-  it('clears the override after saturday to restore automatic selection', async () => {
+  it('can directly move backward from saturday to monday', async () => {
     const user = userEvent.setup();
     const settings = settingsApi();
     const onThemeChange = vi.fn();
@@ -49,12 +65,13 @@ describe('workbench toolbar', () => {
     );
 
     await user.click(screen.getByRole('button', { name: '切换皮肤，当前：周六 · 松弛复盘' }));
+    await user.click(screen.getByRole('menuitemradio', { name: '周一 · 冷启动' }));
 
-    expect(settings.set).toHaveBeenCalledWith('themeOverride', null);
-    expect(onThemeChange).toHaveBeenCalledWith(null);
+    expect(settings.set).toHaveBeenCalledWith('themeOverride', { themeId: 'monday', mode: 'persistent' });
+    expect(onThemeChange).toHaveBeenCalledWith({ themeId: 'monday', mode: 'persistent' });
   });
 
-  it('advances auto from the resolved weekday and saves the visible next theme', async () => {
+  it('lets automatic mode select any concrete theme', async () => {
     const user = userEvent.setup();
     const settings = settingsApi();
     const onThemeChange = vi.fn();
@@ -69,11 +86,22 @@ describe('workbench toolbar', () => {
     );
 
     await user.click(screen.getByRole('button', { name: '切换皮肤，当前：周一 · 冷启动' }));
+    await user.click(screen.getByRole('menuitemradio', { name: '周四 · 沉稳推进' }));
 
     expect(settings.set).toHaveBeenCalledWith('themeOverride', {
-      themeId: 'tuesday',
+      themeId: 'thursday',
       mode: 'persistent'
     });
+  });
+
+  it('closes the theme menu with Escape', async () => {
+    const user = userEvent.setup();
+    render(<WorkbenchToolbar themeId="monday" selection="monday" onThemeChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: '切换皮肤，当前：周一 · 冷启动' }));
+    expect(screen.getByRole('menu')).toBeVisible();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
   it('reserves disabled desktop, opacity and report controls', () => {
@@ -102,13 +130,14 @@ describe('workbench toolbar', () => {
 
     const button = screen.getByRole('button', { name: '切换皮肤，当前：周一 · 冷启动' });
     await user.click(button);
+    await user.click(screen.getByRole('menuitemradio', { name: '周六 · 松弛复盘' }));
 
     expect(onThemeChange).not.toHaveBeenCalled();
     expect(await screen.findByRole('alert')).toHaveTextContent('皮肤保存失败，请重试');
     expect(button).toBeEnabled();
 
-    await user.click(button);
-    expect(onThemeChange).toHaveBeenCalledWith({ themeId: 'tuesday', mode: 'persistent' });
+    await user.click(screen.getByRole('menuitemradio', { name: '周六 · 松弛复盘' }));
+    expect(onThemeChange).toHaveBeenCalledWith({ themeId: 'saturday', mode: 'persistent' });
   });
 
   it('disables the theme button while saving to prevent duplicate writes', async () => {
@@ -122,8 +151,9 @@ describe('workbench toolbar', () => {
 
     const button = screen.getByRole('button', { name: '切换皮肤，当前：周一 · 冷启动' });
     await user.click(button);
+    await user.click(screen.getByRole('menuitemradio', { name: '周六 · 松弛复盘' }));
     expect(button).toBeDisabled();
-    await user.click(button);
+    await user.click(screen.getByRole('menuitemradio', { name: '周五 · 冲刺收官' }));
     expect(settings.set).toHaveBeenCalledTimes(1);
 
     resolveSet();

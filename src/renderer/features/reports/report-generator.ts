@@ -23,6 +23,15 @@ const quadrantLabels: Record<Quadrant, string> = {
   neither: '不重要不紧急'
 };
 
+export const WEEKLY_SECTION_TITLES = [
+  '本周工作概况',
+  '重点成果',
+  '工作进展',
+  '问题与风险',
+  '下周工作计划',
+  '复盘总结'
+] as const;
+
 function hanLength(value: string): number {
   return [...value].filter((character) => /\p{Script=Han}/u.test(character)).length;
 }
@@ -145,6 +154,128 @@ function fitReport(sourceBlocks: ReportBlock[], min: number, max: number, filler
   return result;
 }
 
+const quadrantPriority: Record<Quadrant, number> = {
+  urgent_important: 0,
+  important: 1,
+  urgent: 2,
+  neither: 3
+};
+
+function byWorkPriority(left: Task, right: Task): number {
+  return quadrantPriority[left.quadrant] - quadrantPriority[right.quadrant]
+    || left.plannedDate.localeCompare(right.plannedDate)
+    || left.sortOrder - right.sortOrder;
+}
+
+function numberedTitles(tasks: Task[]): string {
+  return tasks.map((task, index) => `${index + 1}. “${clean(task.title)}”`).join('；');
+}
+
+function reviewEntries(
+  reviews: DailyReview[],
+  key: 'wins' | 'improvements' | 'tomorrowFocus',
+  limit = 2
+): string[] {
+  return reviews.map((item) => clean(item[key])).filter(Boolean).slice(0, limit);
+}
+
+function sentence(parts: string[]): string {
+  const text = parts.filter(Boolean).join('；');
+  return text ? `${text.replace(/[。；]+$/u, '')}。` : '暂无相关记录。';
+}
+
+function weeklySection(title: typeof WEEKLY_SECTION_TITLES[number], content: string): string {
+  return `【${title}】\n${content}`;
+}
+
+function generateWeeklyTemplate(input: {
+  tasks: Task[];
+  reviews: DailyReview[];
+  completed: Task[];
+  pending: Task[];
+  quadrants: Record<Quadrant, number>;
+  rate: number;
+}): string {
+  const { tasks, reviews, completed, pending, quadrants, rate } = input;
+  const sparse = tasks.length === 0 && reviews.length === 0;
+  const priorityCompleted = completed
+    .filter((task) => task.quadrant === 'urgent_important' || task.quadrant === 'important')
+    .sort(byWorkPriority)
+    .slice(0, 3);
+  const priorityCompletedIds = new Set(priorityCompleted.map((task) => task.id));
+  const otherCompleted = completed
+    .filter((task) => !priorityCompletedIds.has(task.id))
+    .sort(byWorkPriority)
+    .slice(0, 2);
+  const priorityPending = [...pending].sort(byWorkPriority).slice(0, 3);
+  const wins = reviewEntries(reviews, 'wins');
+  const improvements = reviewEntries(reviews, 'improvements');
+  const nextFocus = reviewEntries(reviews, 'tomorrowFocus');
+  const summaryDetails: string[] = [];
+
+  const render = () => {
+    const importantCount = quadrants.urgent_important + quadrants.important;
+    const overview = `${sparse ? '本周期记录较少。' : ''}本周事项共${tasks.length}项，完成${completed.length}项，完成率${rate}%，未完成${pending.length}项；其中重要相关事项${importantCount}项。`;
+    const achievement = priorityCompleted.length
+      ? sentence([`本周重点成果为${numberedTitles(priorityCompleted)}`])
+      : '暂无相关记录。';
+    const progress = sentence([
+      otherCompleted.length ? `其他已完成事项包括${numberedTitles(otherCompleted)}` : '',
+      wins.length ? `复盘记录的本周收获包括${wins.join('、')}` : ''
+    ]);
+    const risks = sentence([
+      priorityPending.length ? `尚未完成并需继续关注的事项包括${numberedTitles(priorityPending)}` : '',
+      improvements.length ? `已记录的改进点包括${improvements.join('、')}` : ''
+    ]);
+    const plan = sentence([
+      priorityPending.length ? `下周优先推进${numberedTitles(priorityPending)}` : '',
+      nextFocus.length ? `复盘中明确的后续重点包括${nextFocus.join('、')}` : ''
+    ]);
+    const summary = sentence([
+      sparse
+        ? '当前没有可用于总结的事项或复盘内容，建议先补充真实记录后重新生成'
+        : `本周报告依据${tasks.length}项事项和${reviews.length}条复盘生成，所有成果、风险及计划均来自已保存记录`,
+      ...summaryDetails
+    ]);
+    return [
+      weeklySection('本周工作概况', overview),
+      weeklySection('重点成果', achievement),
+      weeklySection('工作进展', progress),
+      weeklySection('问题与风险', risks),
+      weeklySection('下周工作计划', plan),
+      weeklySection('复盘总结', summary)
+    ].join('\n\n');
+  };
+
+  const removable = [otherCompleted, priorityPending, priorityCompleted, nextFocus, improvements, wins];
+  let text = render();
+  while (hanLength(text) > 340) {
+    const list = removable.find((items) => items.length > 0);
+    if (!list) break;
+    list.pop();
+    text = render();
+  }
+
+  if (!sparse) {
+    const fillers = factualFillers({
+      total: tasks.length,
+      completed: completed.length,
+      pending: pending.length,
+      reviewCount: reviews.length,
+      quadrants
+    });
+    for (const filler of fillers) {
+      if (hanLength(text) >= 260) break;
+      summaryDetails.push(filler);
+      const candidate = render();
+      if (hanLength(candidate) <= 340) text = candidate;
+      else summaryDetails.pop();
+    }
+  }
+
+  return text;
+}
+
 export function generateLocalReport(input: ReportInput, now: () => Date = () => new Date()): GeneratedReport {
   const tasks = input.tasks.filter((task) => task.status !== 'deleted' && dateInRange(task.plannedDate, input.startDate, input.endDate));
   const reviews = input.reviews.filter((review) => dateInRange(review.reviewDate, input.startDate, input.endDate));
@@ -191,9 +322,17 @@ export function generateLocalReport(input: ReportInput, now: () => Date = () => 
   const focus = reviewValues(reviews, 'tomorrowFocus', input.kind === 'weekly' ? 2 : 4);
   const insights = `复盘记录：收获${wins ? `包括${wins}` : '暂未填写'}；改进${improvements ? `包括${improvements}` : '暂未填写'}；后续重点${focus ? `包括${focus}` : '暂未填写'}。`;
 
-  const paragraphs: ReportBlock[] = input.kind === 'weekly'
-    ? [paragraph(overview, true), achievements, risks, paragraph(insights)]
-    : [
+  const periodLabel = `${input.startDate} 至 ${input.endDate}`;
+  if (input.kind === 'weekly') {
+    return {
+      title: `周报（${periodLabel}）`,
+      periodLabel,
+      text: generateWeeklyTemplate({ tasks, reviews, completed, pending, quadrants, rate }),
+      generatedAt: now().toISOString()
+    };
+  }
+
+  const paragraphs: ReportBlock[] = [
         paragraph(overview, true),
         achievements,
         paragraph(`四象限分布：${(Object.keys(quadrantLabels) as Quadrant[]).map((key) => `${quadrantLabels[key]}${quadrants[key]}项`).join('，')}。完成趋势只能依据当前保存的完成状态判断。`),
@@ -203,11 +342,10 @@ export function generateLocalReport(input: ReportInput, now: () => Date = () => 
         paragraph(`下月建议与重点：优先复核${pending.length}项未完成记录，并以已填写的后续重点为依据安排；若重点为空，则先补充复盘后再作决定。`)
       ];
   const fillers = factualFillers({ total: tasks.length, completed: completed.length, pending: pending.length, reviewCount: reviews.length, quadrants });
-  const periodLabel = `${input.startDate} 至 ${input.endDate}`;
   return {
-    title: `${input.kind === 'weekly' ? '周报' : '月报'}（${periodLabel}）`,
+    title: `月报（${periodLabel}）`,
     periodLabel,
-    text: fitReport(paragraphs, input.kind === 'weekly' ? 180 : 540, input.kind === 'weekly' ? 240 : 660, fillers),
+    text: fitReport(paragraphs, 540, 660, fillers),
     generatedAt: now().toISOString()
   };
 }

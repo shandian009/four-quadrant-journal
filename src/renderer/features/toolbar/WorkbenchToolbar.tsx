@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { DesktopWindowState, SettingsApi, WindowApi } from '../../../shared/ipc';
 import type { ThemeId, ThemeOverride } from '../../theme/resolve-theme';
 import { THEMES } from '../../theme/themes';
-import { nextThemeSelection, type ThemeSelection } from './theme-cycle';
+import { THEME_ORDER, type ThemeSelection } from './theme-cycle';
 
 export function WorkbenchToolbar({
   themeId,
@@ -35,6 +35,7 @@ export function WorkbenchToolbar({
 }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [desktopState, setDesktopState] = useState<DesktopWindowState>({ mode: 'normal', opacity: 1 });
   const [desktopPending, setDesktopPending] = useState(Boolean(windowApi));
   const [desktopError, setDesktopError] = useState<string | null>(null);
@@ -54,23 +55,27 @@ export function WorkbenchToolbar({
     };
   }, [windowApi]);
 
-  async function cycleTheme() {
+  async function selectTheme(selectedThemeId: ThemeId) {
     onThemeAttempt?.();
-    const next = nextThemeSelection(selection, now());
-    const override: ThemeOverride | null = next === 'auto'
-      ? null
-      : { themeId: next, mode: 'persistent' };
+    const override: ThemeOverride = { themeId: selectedThemeId, mode: 'persistent' };
 
     setSaving(true);
     setSaveError(null);
     try {
       await settings?.set('themeOverride', override);
       onThemeChange(override);
+      setThemeMenuOpen(false);
     } catch {
       setSaveError('皮肤保存失败，请重试');
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleThemeMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    setThemeMenuOpen(false);
   }
 
   async function refreshAfterError(error: unknown) {
@@ -112,16 +117,38 @@ export function WorkbenchToolbar({
 
   return (
     <div className="workbench-toolbar" data-testid="workbench-toolbar" role="toolbar" aria-label="工作台工具条">
-      <button
-        className="workbench-toolbar__theme"
-        type="button"
-        disabled={disabled || saving}
-        aria-label={`切换皮肤，当前：${THEMES[themeId].label}`}
-        onClick={() => void cycleTheme()}
-      >
-        <span aria-hidden="true">🎨</span>
-        <span>{THEMES[themeId].label}</span>
-      </button>
+      <div className="workbench-toolbar__theme-picker" onKeyDown={handleThemeMenuKeyDown}>
+        <button
+          className="workbench-toolbar__theme"
+          type="button"
+          disabled={disabled || saving}
+          aria-label={`切换皮肤，当前：${THEMES[themeId].label}`}
+          aria-haspopup="menu"
+          aria-expanded={themeMenuOpen}
+          onClick={() => setThemeMenuOpen((open) => !open)}
+        >
+          <span aria-hidden="true">🎨</span>
+          <span>{THEMES[themeId].label}</span>
+          <span aria-hidden="true">⌄</span>
+        </button>
+        {themeMenuOpen && (
+          <div className="workbench-toolbar__theme-menu" role="menu" aria-label="选择皮肤">
+            {THEME_ORDER.map((item) => (
+              <button
+                key={item}
+                type="button"
+                role="menuitemradio"
+                aria-checked={themeId === item}
+                disabled={saving}
+                onClick={() => void selectTheme(item)}
+              >
+                <span aria-hidden="true" className="workbench-toolbar__theme-check">{themeId === item ? '✓' : ''}</span>
+                <span>{THEMES[item].label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <button
         type="button"
         disabled={windowApi ? desktopPending : !onToggleDesktop}
