@@ -3,6 +3,7 @@ import type {
   RecoveryControlEnvironment,
   RecoveryControlWindowPort
 } from './desktop-recovery-control';
+import { isRecoveryControlUrl } from './desktop-recovery-control';
 import type { WindowBounds } from './window-control';
 
 const RECOVERY_URL = 'fqj-recovery://restore';
@@ -87,7 +88,7 @@ class ElectronRecoveryControlWindow implements RecoveryControlWindowPort {
     window.setAlwaysOnTop(true, 'floating');
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', (event, url) => {
-      if (url !== RECOVERY_URL) return;
+      if (!isRecoveryControlUrl(url)) return;
       event.preventDefault();
       void this.triggerRestore().catch((error: unknown) => {
         console.error('桌面模式恢复失败', error);
