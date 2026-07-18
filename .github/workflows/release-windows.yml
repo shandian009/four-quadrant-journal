@@ -82,9 +82,6 @@ jobs:
       - name: Upload verified Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: four-quadrant-journal-windows
+          name: four-quadrant-journal-green
           if-no-files-found: error
-          path: |
-            release/FourQuadrantJournal-*-green-folder.zip
-            release/FourQuadrantJournal-*-win-x64.exe
-            release/win-unpacked/**
+          path: release/FourQuadrantJournal-*-green-folder.zip

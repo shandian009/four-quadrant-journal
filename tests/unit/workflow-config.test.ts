@@ -123,4 +123,14 @@ describe('GitHub workflow configuration', () => {
     expect(workflow).toMatch(/Compress-Archive[^\n]*\$greenFolder/);
     expect(workflow).toMatch(/release\/FourQuadrantJournal-\*-green-folder\.zip/);
   });
+
+  it('uploads the verified green ZIP separately instead of a 500 MB mixed bundle', () => {
+    const workflow = read('.github/workflows/release-windows.yml');
+    const upload = workflow.slice(workflow.indexOf('name: Upload verified Windows artifacts'));
+
+    expect(upload).toContain('name: four-quadrant-journal-green');
+    expect(upload).toContain('release/FourQuadrantJournal-*-green-folder.zip');
+    expect(upload).not.toContain('release/win-unpacked');
+    expect(upload).not.toContain('release/FourQuadrantJournal-*-win-x64.exe');
+  });
 });
