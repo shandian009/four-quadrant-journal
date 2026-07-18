@@ -12,6 +12,10 @@ internal static class Program
     private const long WsThickFrame = 0x00040000L;
     private const long WsChild = 0x40000000L;
     private const long WsPopup = 0x80000000L;
+    private const long WsVisible = 0x10000000L;
+    private const long WsMinimize = 0x20000000L;
+    private const long WsMaximize = 0x01000000L;
+    private const long VolatileWindowStateMask = WsVisible | WsMinimize | WsMaximize;
     private static readonly nint HwndBottom = new(1);
     private const uint SmtoNormal = 0x0000;
     private const uint SwpNoMove = 0x0002;
@@ -158,23 +162,53 @@ internal static class Program
             return Fail("原始窗口样式无效");
         nint originalStyle = new(style);
 
-        SetParentChecked(hwnd, originalParent);
-        SetStyleChecked(hwnd, originalStyle);
-        SetWindowPosChecked(hwnd, 0, false);
-        if (GetParentChecked(hwnd) != originalParent)
-            throw new InvalidOperationException("最终父窗口验证失败");
-        if (GetStyleChecked(hwnd) != originalStyle)
-            throw new InvalidOperationException("最终窗口样式验证失败");
+        (nint restoredParent, nint restoredStyle) = RestoreWindowWithRetry(hwnd, originalParent, originalStyle);
 
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             success = true,
-            parent = originalParent.ToInt64().ToString(),
-            style = originalStyle.ToInt64().ToString(),
+            parent = restoredParent.ToInt64().ToString(),
+            style = restoredStyle.ToInt64().ToString(),
             message = "已恢复窗口"
         }));
         return 0;
     }
+
+    private static (nint Parent, nint Style) RestoreWindowWithRetry(nint hwnd, nint originalParent, nint originalStyle)
+    {
+        Exception? lastError = null;
+        nint actualParent = 0;
+        nint actualStyle = 0;
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            try
+            {
+                SetParentValue(hwnd, originalParent);
+                SetStyleValue(hwnd, originalStyle);
+                SetWindowPosChecked(hwnd, 0, false);
+                Thread.Sleep(50);
+                actualParent = GetParentChecked(hwnd);
+                actualStyle = GetStyleChecked(hwnd);
+                if (actualParent == originalParent && StableStyleMatches(actualStyle, originalStyle))
+                    return (actualParent, actualStyle);
+                lastError = new InvalidOperationException(
+                    $"恢复状态尚未稳定（父窗口 {actualParent.ToInt64()}，样式 {actualStyle.ToInt64()}）");
+            }
+            catch (Exception exception)
+            {
+                lastError = exception;
+            }
+            Thread.Sleep(50);
+        }
+
+        string detail = lastError?.Message ?? "未知错误";
+        if (actualParent != originalParent)
+            throw new InvalidOperationException($"最终父窗口验证失败：{detail}");
+        throw new InvalidOperationException($"最终窗口稳定样式验证失败：{detail}");
+    }
+
+    private static bool StableStyleMatches(nint actual, nint expected) =>
+        ((actual.ToInt64() ^ expected.ToInt64()) & ~VolatileWindowStateMask) == 0;
 
     private static int Status(nint hwnd)
     {
@@ -210,20 +244,30 @@ internal static class Program
 
     private static void SetParentChecked(nint hwnd, nint parent)
     {
+        SetParentValue(hwnd, parent);
+        if (GetParentChecked(hwnd) != parent) throw new InvalidOperationException("SetParent 最终值不匹配");
+    }
+
+    private static void SetParentValue(nint hwnd, nint parent)
+    {
         Marshal.SetLastPInvokeError(0);
         nint previous = SetParent(hwnd, parent);
         int error = Marshal.GetLastPInvokeError();
         if (previous == 0 && error != 0) ThrowWin32("SetParent", error);
-        if (GetParentChecked(hwnd) != parent) throw new InvalidOperationException("SetParent 最终值不匹配");
     }
 
     private static void SetStyleChecked(nint hwnd, nint style)
+    {
+        SetStyleValue(hwnd, style);
+        if (GetStyleChecked(hwnd) != style) throw new InvalidOperationException("SetWindowLongPtr 最终值不匹配");
+    }
+
+    private static void SetStyleValue(nint hwnd, nint style)
     {
         Marshal.SetLastPInvokeError(0);
         nint previous = SetWindowLongPtr(hwnd, GwlStyle, style);
         int error = Marshal.GetLastPInvokeError();
         if (previous == 0 && error != 0) ThrowWin32("SetWindowLongPtr", error);
-        if (GetStyleChecked(hwnd) != style) throw new InvalidOperationException("SetWindowLongPtr 最终值不匹配");
     }
 
     private static void SetWindowPosChecked(nint hwnd, nint insertAfter, bool updateZOrder)

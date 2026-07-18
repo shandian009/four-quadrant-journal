@@ -261,7 +261,7 @@ describe('desktop window controller', () => {
     const { controller, host, window } = harness({ detachError: new Error('detach failed') });
     await controller.enter();
 
-    await expect(controller.exit()).rejects.toThrow('恢复普通窗口失败，请从托盘重试');
+    await expect(controller.exit()).rejects.toThrow('恢复普通窗口失败，请从托盘重试：detach failed');
 
     expect(controller.getState()).toEqual({ mode: 'desktop', opacity: .85 });
     expect(host.detach).toHaveBeenCalledWith(42n, 0n, 0x10cf0000n);

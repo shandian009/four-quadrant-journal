@@ -57,6 +57,11 @@ const RECOVERY_MESSAGE = '未能嵌入桌面，已恢复普通窗口';
 const RECOVERY_FAILED_MESSAGE = '恢复普通窗口失败，请从托盘重试';
 const OPACITY_NOT_PERSISTED_MESSAGE = '透明度已应用，但未能保存设置';
 
+function recoveryFailureMessage(error: unknown): string {
+  const detail = error instanceof Error ? error.message.replace(/\s+/g, ' ').trim().slice(0, 180) : '';
+  return detail ? `${RECOVERY_FAILED_MESSAGE}：${detail}` : RECOVERY_FAILED_MESSAGE;
+}
+
 export class WindowController {
   private state: DesktopWindowState = { mode: 'normal', opacity: 1 };
   private normalBounds: WindowBounds | null = null;
@@ -158,7 +163,7 @@ export class WindowController {
       await this.host.detach(hwnd, token.originalParent, token.originalStyle);
     } catch (error) {
       this.ensureVisible();
-      throw new Error(RECOVERY_FAILED_MESSAGE, { cause: error });
+      throw new Error(recoveryFailureMessage(error), { cause: error });
     }
     this.window.setSkipTaskbar(false);
     this.window.setMenuBarVisibility(true);

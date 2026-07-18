@@ -39,6 +39,11 @@ function getHostStatus(helperPath: string, hwnd: string): HostStatus {
   return JSON.parse(output) as HostStatus;
 }
 
+function stableWindowStyle(style: string): bigint {
+  const volatileWindowStateMask = 0x10000000n | 0x20000000n | 0x01000000n;
+  return (BigInt(style) & 0xffffffffn) & ~volatileWindowStateMask;
+}
+
 function launchPackagedApp(userData: string): Promise<ElectronApplication> {
   return electron.launch({
     executablePath: executablePath!,
@@ -124,7 +129,10 @@ test('desktop mode attaches the real window, applies opacity and restores safely
     await recoveryPage.bringToFront();
     await expect.poll(() => recoveryPage.isClosed()).toBe(true);
     await expect.poll(() => getHostStatus(helperPath, attachedWindow.hwnd).parent).toBe(initialHostState.parent);
-    expect(getHostStatus(helperPath, attachedWindow.hwnd).style).toBe(initialHostState.style);
+    const restoredHostState = getHostStatus(helperPath, attachedWindow.hwnd);
+    expect(stableWindowStyle(restoredHostState.style)).toBe(stableWindowStyle(initialHostState.style));
+    expect(BigInt(restoredHostState.style) & 0x08000000n)
+      .toBe(BigInt(initialHostState.style) & 0x08000000n);
     await expect.poll(async () => (await nativeWindowState(application!)).opacity).toBe(1);
     await expect(page.getByRole('button', { name: '嵌入桌面' })).toBeVisible({ timeout: 10_000 });
 
