@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Notification, type Tray } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Notification, type Tray } from 'electron';
 import path from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { openDatabase } from './database';
@@ -15,10 +15,20 @@ import { SettingsRepository } from './repositories/settings';
 import { BackupService } from './services/backup-service';
 import { installApplicationMenu } from './application-menu';
 import { DesktopHostProcess, WindowController, registerWindowIpc, type WindowPort } from './window-control';
+import { DesktopRecoveryControl } from './desktop-recovery-control';
+import { ElectronRecoveryControlEnvironment } from './electron-desktop-recovery-control';
+import {
+  WindowActivationController,
+  registerRecoveryShortcut,
+  type RecoveryShortcutRegistration
+} from './window-activation';
 
 let mainWindow: BrowserWindow | null = null;
 let applicationTray: Tray | null = null;
 let windowController: WindowController | null = null;
+let desktopRecoveryControl: DesktopRecoveryControl | null = null;
+let windowActivationController: WindowActivationController | null = null;
+let recoveryShortcut: RecoveryShortcutRegistration | null = null;
 let quitting = false;
 
 if (process.env.FOUR_QUADRANT_USER_DATA) {
@@ -45,7 +55,8 @@ if (!hasLock) {
   app.on('second-instance', () => {
     if (!mainWindow) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
-    if (windowController) void windowController.restoreVisibleWindow();
+    if (windowActivationController) runWindowActivation(() => windowActivationController!.restoreAndShow());
+    else if (windowController) void windowController.restoreVisibleWindow();
     else { mainWindow.show(); mainWindow.focus(); }
   });
 
@@ -120,7 +131,36 @@ if (!hasLock) {
     const helperPath = app.isPackaged
       ? path.join(process.resourcesPath, 'app.asar.unpacked', 'build', 'desktop-host.exe')
       : path.join(app.getAppPath(), 'build', 'desktop-host.exe');
-    windowController = new WindowController(windowPort, settingsRepository, new DesktopHostProcess(helperPath));
+    desktopRecoveryControl = new DesktopRecoveryControl(
+      new ElectronRecoveryControlEnvironment(),
+      () => controlledWindow.getBounds(),
+      async () => {
+        if (windowActivationController) await windowActivationController.restoreAndShow();
+        else await windowController?.restoreVisibleWindow();
+      }
+    );
+    windowController = new WindowController(
+      windowPort,
+      settingsRepository,
+      new DesktopHostProcess(helperPath),
+      {
+        entered: () => desktopRecoveryControl?.show(),
+        exited: () => desktopRecoveryControl?.close()
+      }
+    );
+    windowActivationController = new WindowActivationController(windowController, {
+      show: () => controlledWindow.show(),
+      focus: () => controlledWindow.focus()
+    });
+    recoveryShortcut = registerRecoveryShortcut(
+      globalShortcut,
+      () => windowActivationController!.restoreAndShow()
+    );
+    if (!recoveryShortcut.registered) console.warn('Ctrl+Alt+J 已被其他程序占用，托盘和恢复控制条仍可使用');
+    app.on('before-quit', () => {
+      desktopRecoveryControl?.close();
+      recoveryShortcut?.dispose();
+    });
     registerWindowIpc(ipcMain, windowController);
     let scheduler: ReminderScheduler;
     scheduler = new ReminderScheduler(reminderRepository, {
@@ -131,17 +171,37 @@ if (!hasLock) {
           actions: [{ type: 'button', text: '稍后 10 分钟' }],
           closeButtonText: '关闭'
         });
-        notification.on('click', () => { mainWindow?.show(); mainWindow?.focus(); });
+        notification.on('click', () => {
+          if (windowActivationController) runWindowActivation(() => windowActivationController!.restoreAndShow());
+        });
         notification.on('action', (_event, index) => { if (index === 0) void scheduler.snooze(reminder.id, 10); });
         notification.show();
       }
     });
     void scheduler.start();
-    applicationTray = createApplicationTray(mainWindow, {
-      quickAdd: () => { mainWindow?.show(); mainWindow?.webContents.send('ui:quickAdd'); },
+    applicationTray = createApplicationTray({
+      show: () => {
+        if (windowActivationController) runWindowActivation(() => windowActivationController!.restoreAndShow());
+      },
+      quickAdd: () => {
+        if (windowActivationController) {
+          runWindowActivation(() => windowActivationController!.restoreAndShow(
+            () => mainWindow?.webContents.send('ui:quickAdd')
+          ));
+        }
+      },
       setRemindersPaused: (paused) => scheduler.setPaused(paused),
-      restoreWindow: () => { if (windowController) void windowController.restoreVisibleWindow(); },
+      restoreWindow: () => {
+        if (windowActivationController) runWindowActivation(() => windowActivationController!.restoreAndShow());
+      },
       quit: () => { quitting = true; app.quit(); }
     });
+  });
+}
+
+function runWindowActivation(operation: () => Promise<void>): void {
+  void operation().catch((error: unknown) => {
+    console.error('恢复主窗口失败', error);
+    dialog.showErrorBox('无法恢复主窗口', error instanceof Error ? error.message : '请从托盘重试');
   });
 }

@@ -6,6 +6,7 @@ import {
   WindowController,
   clampDesktopOpacity,
   registerWindowIpc,
+  type DesktopModeLifecycle,
   type DesktopHostPort,
   type SettingsPort,
   type WindowBounds,
@@ -44,6 +45,7 @@ function harness(options: {
   maximized?: boolean;
   settingsErrorKey?: string;
   attachGate?: Promise<void>;
+  lifecycle?: DesktopModeLifecycle;
 } = {}) {
   const calls: string[] = [];
   const bounds: WindowBounds = { x: 10, y: 20, width: 1200, height: 760 };
@@ -86,7 +88,14 @@ function harness(options: {
       if (options.detachError) throw options.detachError;
     })
   };
-  return { controller: new WindowController(window, settings, host), window, settings, host, calls, bounds };
+  return {
+    controller: new WindowController(window, settings, host, options.lifecycle),
+    window,
+    settings,
+    host,
+    calls,
+    bounds
+  };
 }
 
 describe('desktop window controller', () => {
@@ -160,6 +169,53 @@ describe('desktop window controller', () => {
       'show',
       'focus'
     ]);
+  });
+
+  it('opens the external recovery control after entering and closes it after restoring', async () => {
+    const lifecycle: DesktopModeLifecycle = { entered: vi.fn(), exited: vi.fn() };
+    const { controller, host } = harness({ lifecycle });
+
+    await controller.enter();
+
+    expect(lifecycle.entered).toHaveBeenCalledOnce();
+    expect(lifecycle.exited).not.toHaveBeenCalled();
+
+    await controller.restoreVisibleWindow();
+
+    expect(host.detach).toHaveBeenCalledOnce();
+    expect(lifecycle.exited).toHaveBeenCalledOnce();
+  });
+
+  it('rolls back desktop embedding when the external recovery control cannot open', async () => {
+    const lifecycle: DesktopModeLifecycle = {
+      entered: vi.fn(async () => { throw new Error('control failed'); }),
+      exited: vi.fn()
+    };
+    const { controller, host, window } = harness({ lifecycle });
+
+    await expect(controller.enter()).rejects.toThrow('未能嵌入桌面，已恢复普通窗口');
+
+    expect(host.detach).toHaveBeenCalledOnce();
+    expect(window.setSkipTaskbar).toHaveBeenLastCalledWith(false);
+    expect(window.show).toHaveBeenCalled();
+    expect(window.focus).toHaveBeenCalled();
+    expect(lifecycle.exited).toHaveBeenCalledOnce();
+    expect(controller.getState()).toEqual({ mode: 'normal', opacity: .85 });
+  });
+
+  it('performs one native detach for concurrent external recovery requests', async () => {
+    const lifecycle: DesktopModeLifecycle = { entered: vi.fn(), exited: vi.fn() };
+    const { controller, host } = harness({ lifecycle });
+    await controller.enter();
+
+    await Promise.all([
+      controller.restoreVisibleWindow(),
+      controller.restoreVisibleWindow(),
+      controller.restoreVisibleWindow()
+    ]);
+
+    expect(host.detach).toHaveBeenCalledOnce();
+    expect(lifecycle.exited).toHaveBeenCalledOnce();
   });
 
   it('captures Electron normal bounds rather than maximized bounds', async () => {

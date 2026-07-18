@@ -37,6 +37,16 @@ export interface DesktopHostPort {
   detach(hwnd: bigint, originalParent: bigint, originalStyle: bigint): Promise<void>;
 }
 
+export interface DesktopModeLifecycle {
+  entered(): void | Promise<void>;
+  exited(): void | Promise<void>;
+}
+
+const noDesktopModeLifecycle: DesktopModeLifecycle = {
+  entered: () => undefined,
+  exited: () => undefined
+};
+
 export function clampDesktopOpacity(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value)
     ? Math.min(1, Math.max(.4, Math.round(value * 20) / 20))
@@ -57,7 +67,8 @@ export class WindowController {
   constructor(
     private readonly window: WindowPort,
     private readonly settings: SettingsPort,
-    private readonly host: DesktopHostPort
+    private readonly host: DesktopHostPort,
+    private readonly lifecycle: DesktopModeLifecycle = noDesktopModeLifecycle
   ) {}
 
   getState(): DesktopWindowState {
@@ -99,6 +110,7 @@ export class WindowController {
       this.state = attached.placement === 'compatible'
         ? { mode: 'desktop', opacity, placement: 'compatible' }
         : { mode: 'desktop', opacity };
+      await this.lifecycle.entered();
       return this.getState();
     } catch (error) {
       try {
@@ -161,6 +173,7 @@ export class WindowController {
     this.normalBounds = null;
     this.normalMaximized = false;
     this.state = { mode: 'normal', opacity };
+    await this.lifecycle.exited();
   }
 
   private ensureVisible(showAndFocus = true): void {

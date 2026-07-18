@@ -1,6 +1,6 @@
 {
   "name": "four-quadrant-journal",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "四象日志 Windows 桌面应用",
   "type": "module",
