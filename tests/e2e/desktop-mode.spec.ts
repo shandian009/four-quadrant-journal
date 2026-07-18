@@ -118,7 +118,10 @@ test('desktop mode attaches the real window, applies opacity and restores safely
       await expect.poll(async () => (await nativeWindowState(application!)).opacity).toBe(Number(value));
     }
 
-    await recoveryPage.getByRole('button', { name: '恢复并编辑' }).click();
+    // Focusing the native recovery window is what a real mouse click or
+    // Alt+Tab selection does. CDP element clicks do not activate an Electron
+    // BrowserWindow on Windows, so bring the real window forward explicitly.
+    await recoveryPage.bringToFront();
     await expect.poll(() => recoveryPage.isClosed()).toBe(true);
     await expect.poll(() => getHostStatus(helperPath, attachedWindow.hwnd).parent).toBe(initialHostState.parent);
     expect(getHostStatus(helperPath, attachedWindow.hwnd).style).toBe(initialHostState.style);

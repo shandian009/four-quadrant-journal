@@ -4,15 +4,6 @@ const CONTROL_WIDTH = 340;
 const CONTROL_HEIGHT = 88;
 const CONTROL_MARGIN = 18;
 
-export function isRecoveryControlNavigation(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'data:' && url.hash === '#restore';
-  } catch {
-    return false;
-  }
-}
-
 export interface RecoveryControlWindowPort {
   load(): Promise<void>;
   showInactive(): void;
