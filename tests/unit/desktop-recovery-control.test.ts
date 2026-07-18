@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   DesktopRecoveryControl,
+  isRecoveryControlNavigation,
   type RecoveryControlEnvironment,
   type RecoveryControlWindowPort
 } from '../../src/main/desktop-recovery-control';
@@ -50,6 +51,13 @@ function harness(options: { loadError?: Error; restoreError?: Error } = {}) {
 }
 
 describe('desktop recovery control', () => {
+  it('accepts only the recovery page fragment navigation', () => {
+    expect(isRecoveryControlNavigation('data:text/html,control#restore')).toBe(true);
+    expect(isRecoveryControlNavigation('data:text/html,control#other')).toBe(false);
+    expect(isRecoveryControlNavigation('https://example.com/#restore')).toBe(false);
+    expect(isRecoveryControlNavigation('not a url')).toBe(false);
+  });
+
   it('creates one external control and positions it at the current display bottom right', async () => {
     const { control, environment, window } = harness();
 
