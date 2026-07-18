@@ -45,7 +45,30 @@ describe('desktop package configuration', () => {
     expect(source).toMatch(/SetParentChecked/);
     expect(source).toMatch(/SetStyleChecked/);
     expect(source).toMatch(/SetWindowPosChecked/);
-    expect(source).toMatch(/GetParentChecked\(hwnd\) != originalParent/);
-    expect(source).toMatch(/GetStyleChecked\(hwnd\) != originalStyle/);
+    expect(source).toMatch(/actualParent != originalParent/);
+    expect(source).toMatch(/StableStyleMatches\(actualStyle, originalStyle\)/);
+  });
+
+  it('uses correct child styles, retries Explorer discovery and has a bottom-layer fallback', () => {
+    const source = readFileSync('native/desktop-host/Program.cs', 'utf8');
+    expect(source).toMatch(/WsChild/);
+    expect(source).toMatch(/WsPopup/);
+    expect(source).toMatch(/Thread\.Sleep/);
+    expect(source).toMatch(/FindDesktopTarget/);
+    expect(source).toMatch(/HwndBottom/);
+    expect(source).toMatch(/placement = "compatible"/);
+  });
+
+  it('retries desktop detach and ignores only volatile Windows state bits', () => {
+    const source = readFileSync('native/desktop-host/Program.cs', 'utf8');
+
+    expect(source).toContain('VolatileWindowStateMask');
+    expect(source).toContain('RestoreWindowWithRetry');
+    expect(source).toMatch(/for \(int attempt = 0; attempt < [1-9][0-9]*; attempt\+\+\)/);
+    expect(source).toContain('StableStyleMatches');
+    expect(source).toMatch(/VolatileWindowStateMask = WsVisible \| WsMinimize \| WsMaximize/);
+    expect(source).not.toContain('WsDisabled');
+    expect(source).toMatch(/actualParent != originalParent/);
+    expect(source).toMatch(/最终父窗口验证失败：\{detail\}/);
   });
 });

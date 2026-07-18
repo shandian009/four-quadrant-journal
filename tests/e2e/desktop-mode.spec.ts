@@ -21,14 +21,9 @@ interface HostStatus {
   style: string;
 }
 
-interface HostInspection extends HostStatus {
-  originalParent: string;
-  originalStyle: string;
-}
-
 async function nativeWindowState(application: ElectronApplication): Promise<NativeWindowState> {
   return application.evaluate(({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0];
+    const window = BrowserWindow.getAllWindows().find((candidate) => candidate.getTitle() === '四象日志');
     if (!window) throw new Error('找不到应用窗口');
     const handle = window.getNativeWindowHandle();
     return {
@@ -42,6 +37,11 @@ async function nativeWindowState(application: ElectronApplication): Promise<Nati
 function getHostStatus(helperPath: string, hwnd: string): HostStatus {
   const output = execFileSync(helperPath, ['status', hwnd], { encoding: 'utf8', windowsHide: true });
   return JSON.parse(output) as HostStatus;
+}
+
+function stableWindowStyle(style: string): bigint {
+  const volatileWindowStateMask = 0x10000000n | 0x20000000n | 0x01000000n;
+  return (BigInt(style) & 0xffffffffn) & ~volatileWindowStateMask;
 }
 
 function launchPackagedApp(userData: string): Promise<ElectronApplication> {
@@ -64,7 +64,6 @@ test('desktop mode attaches the real window, applies opacity and restores safely
     application = await launchPackagedApp(userData);
     let page = await application.firstWindow({ timeout: 20_000 });
     await expect(page.getByRole('heading', { name: '今日工作台' })).toBeVisible({ timeout: 10_000 });
-
     const initialWindow = await nativeWindowState(application);
     const helperPath = path.join(
       initialWindow.resourcesPath,
@@ -73,40 +72,45 @@ test('desktop mode attaches the real window, applies opacity and restores safely
       'desktop-host.exe'
     );
     expect(existsSync(helperPath)).toBe(true);
-    const inspection = JSON.parse(execFileSync(helperPath, ['inspect', initialWindow.hwnd], {
-      encoding: 'utf8', windowsHide: true
-    })) as HostInspection;
+    const initialHostState = getHostStatus(helperPath, initialWindow.hwnd);
 
+    const normalOpacitySlider = page.getByRole('slider', { name: '窗口透明度' });
+    await normalOpacitySlider.evaluate((element) => {
+      const input = element as HTMLInputElement;
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      if (!setValue) throw new Error('无法设置透明度滑块');
+      setValue.call(input, '0.6');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await expect.poll(async () => (await nativeWindowState(application!)).opacity).toBe(.6);
+    await page.getByRole('button', { name: '恢复完全不透明' }).click();
+    await expect.poll(async () => (await nativeWindowState(application!)).opacity).toBe(1);
+
+    const recoveryWindowPromise = application.waitForEvent('window');
     await page.getByRole('button', { name: '嵌入桌面' }).click();
-    const restoreButton = page.getByRole('button', { name: '恢复窗口' });
-    try {
-      await expect(restoreButton).toBeVisible({ timeout: 10_000 });
-    } catch (uiError) {
-      try {
-        execFileSync(helperPath, ['attach', initialWindow.hwnd], { encoding: 'utf8', windowsHide: true });
-        execFileSync(helperPath, [
-          'detach', initialWindow.hwnd, inspection.originalParent, inspection.originalStyle
-        ], { encoding: 'utf8', windowsHide: true });
-      } catch (nativeError) {
-        const output = `${(nativeError as { stdout?: string }).stdout ?? ''}${(nativeError as { stderr?: string }).stderr ?? ''}`;
-        let diagnostic = output.trim();
-        try {
-          diagnostic = (JSON.parse(diagnostic) as { message?: string }).message ?? diagnostic;
-        } catch { /* preserve raw helper output */ }
-        if (/找不到 (?:Progman|WorkerW)/.test(diagnostic)) {
-          test.skip(true, `托管测试机缺少可交互桌面层：${diagnostic}`);
-          return;
-        }
-        throw new Error(`桌面助手拒绝嵌入：${diagnostic}`, { cause: nativeError });
-      }
-      throw uiError;
-    }
+    const recoveryPage = await recoveryWindowPromise;
+    await expect(page.getByRole('button', { name: '恢复窗口' })).toBeVisible({ timeout: 10_000 });
+    await expect(recoveryPage.getByText('四象日志已嵌入桌面')).toBeVisible({ timeout: 10_000 });
+    await expect(recoveryPage.getByRole('button', { name: '恢复并编辑' })).toBeVisible();
 
     const attachedWindow = await nativeWindowState(application);
-    await expect.poll(() => getHostStatus(helperPath, attachedWindow.hwnd).parent).not.toBe('0');
-    expect(getHostStatus(helperPath, attachedWindow.hwnd).success).toBe(true);
+    const attachedHostState = getHostStatus(helperPath, attachedWindow.hwnd);
+    const compatible = await page.getByText('桌面兼容模式').isVisible().catch(() => false);
+    const style = BigInt(attachedHostState.style) & 0xffffffffn;
+    if (compatible) {
+      expect(attachedHostState.parent).toBe('0');
+      // Electron may normalize WS_POPUP after the native helper has placed the
+      // top-level window at HWND_BOTTOM. The durable safety invariant is that a
+      // compatibility window remains top-level and never keeps WS_CHILD.
+      expect(style & 0x40000000n).toBe(0n);
+    } else {
+      expect(attachedHostState.parent).not.toBe('0');
+      expect(style & 0x40000000n).toBe(0x40000000n);
+      expect(style & 0x80000000n).toBe(0n);
+    }
 
-    const opacitySlider = page.getByRole('slider', { name: '桌面透明度' });
+    const opacitySlider = page.getByRole('slider', { name: '窗口透明度' });
     for (const value of ['0.4', '0.85', '1']) {
       await opacitySlider.evaluate((element, nextValue) => {
         const input = element as HTMLInputElement;
@@ -119,10 +123,18 @@ test('desktop mode attaches the real window, applies opacity and restores safely
       await expect.poll(async () => (await nativeWindowState(application!)).opacity).toBe(Number(value));
     }
 
-    await page.getByRole('button', { name: '恢复窗口' }).click();
-    await expect(page.getByRole('button', { name: '嵌入桌面' })).toBeVisible({ timeout: 10_000 });
-    await expect.poll(() => getHostStatus(helperPath, attachedWindow.hwnd).parent).toBe('0');
+    // Focusing the native recovery window is what a real mouse click or
+    // Alt+Tab selection does. CDP element clicks do not activate an Electron
+    // BrowserWindow on Windows, so bring the real window forward explicitly.
+    await recoveryPage.bringToFront();
+    await expect.poll(() => recoveryPage.isClosed()).toBe(true);
+    await expect.poll(() => getHostStatus(helperPath, attachedWindow.hwnd).parent).toBe(initialHostState.parent);
+    const restoredHostState = getHostStatus(helperPath, attachedWindow.hwnd);
+    expect(stableWindowStyle(restoredHostState.style)).toBe(stableWindowStyle(initialHostState.style));
+    expect(BigInt(restoredHostState.style) & 0x08000000n)
+      .toBe(BigInt(initialHostState.style) & 0x08000000n);
     await expect.poll(async () => (await nativeWindowState(application!)).opacity).toBe(1);
+    await expect(page.getByRole('button', { name: '嵌入桌面' })).toBeVisible({ timeout: 10_000 });
 
     await application.close();
     application = await launchPackagedApp(userData);

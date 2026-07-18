@@ -20,7 +20,8 @@ function api(): JournalApi {
     reports: { exportText: vi.fn() },
     window: {
       getDesktopState: vi.fn().mockResolvedValue({ mode: 'desktop', opacity: .85 }),
-      enterDesktopMode: vi.fn(), exitDesktopMode: vi.fn().mockResolvedValue({ mode: 'normal', opacity: 1 }), setDesktopOpacity: vi.fn()
+      enterDesktopMode: vi.fn(), exitDesktopMode: vi.fn().mockResolvedValue({ mode: 'normal', opacity: 1 }), setDesktopOpacity: vi.fn(),
+      onDesktopStateChanged: vi.fn(() => () => undefined)
     }
   };
 }
@@ -60,7 +61,7 @@ describe('application shell', () => {
     render(<App api={api()} />);
 
     expect(await screen.findByRole('button', { name: '恢复窗口' })).toBeVisible();
-    expect(screen.getByRole('slider', { name: '桌面透明度' })).toBeVisible();
+    expect(screen.getByRole('slider', { name: '窗口透明度' })).toBeVisible();
     expect(screen.getByRole('navigation', { name: '主导航' })).toBeVisible();
     expect(screen.getByRole('button', { name: '四象限' })).toBeVisible();
   });

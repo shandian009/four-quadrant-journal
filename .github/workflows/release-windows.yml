@@ -74,17 +74,14 @@ jobs:
 
           1. 请先完整解压 ZIP，再运行文件夹中的“四象日志.exe”。
           2. 不要单独移动 EXE；应用依赖同一文件夹内的其他文件。
-          3. 使用“嵌入桌面”进入桌面模式，使用“恢复窗口”返回普通窗口。
-          4. 若窗口暂时不可见，请在系统托盘找到“四象日志”，双击图标或选择恢复窗口。
+          3. 使用“嵌入桌面”进入桌面模式；需要设置或编辑时，点击右下角“恢复并编辑”。
+          4. 若恢复控制条暂时不可见，请双击系统托盘中的“四象日志”，或按 Ctrl+Alt+J。
           '@
           $instructions | Set-Content -Path "$greenFolder/使用说明.txt" -Encoding utf8
           Compress-Archive -Path $greenFolder -DestinationPath "release/FourQuadrantJournal-$version-green-folder.zip" -Force
       - name: Upload verified Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: four-quadrant-journal-windows
+          name: four-quadrant-journal-green
           if-no-files-found: error
-          path: |
-            release/FourQuadrantJournal-*-green-folder.zip
-            release/FourQuadrantJournal-*-win-x64.exe
-            release/win-unpacked/**
+          path: release/FourQuadrantJournal-*-green-folder.zip

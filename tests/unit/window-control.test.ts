@@ -6,6 +6,7 @@ import {
   WindowController,
   clampDesktopOpacity,
   registerWindowIpc,
+  type DesktopModeLifecycle,
   type DesktopHostPort,
   type SettingsPort,
   type WindowBounds,
@@ -44,6 +45,7 @@ function harness(options: {
   maximized?: boolean;
   settingsErrorKey?: string;
   attachGate?: Promise<void>;
+  lifecycle?: DesktopModeLifecycle;
 } = {}) {
   const calls: string[] = [];
   const bounds: WindowBounds = { x: 10, y: 20, width: 1200, height: 760 };
@@ -79,13 +81,21 @@ function harness(options: {
       calls.push('attach');
       await options.attachGate;
       if (options.attachError) throw options.attachError;
+      return { placement: 'embedded' as const, message: '已嵌入桌面' };
     }),
     detach: vi.fn(async () => {
       calls.push('detach');
       if (options.detachError) throw options.detachError;
     })
   };
-  return { controller: new WindowController(window, settings, host), window, settings, host, calls, bounds };
+  return {
+    controller: new WindowController(window, settings, host, options.lifecycle),
+    window,
+    settings,
+    host,
+    calls,
+    bounds
+  };
 }
 
 describe('desktop window controller', () => {
@@ -113,13 +123,13 @@ describe('desktop window controller', () => {
     ]);
   });
 
-  it('does not apply desktop opacity while in normal mode', async () => {
+  it('applies and persists opacity while in normal mode', async () => {
     const { controller, window, settings } = harness();
 
-    await expect(controller.setOpacity(.55)).resolves.toEqual({ mode: 'normal', opacity: 1 });
+    await expect(controller.setOpacity(.55)).resolves.toEqual({ mode: 'normal', opacity: .55 });
 
-    expect(window.setOpacity).not.toHaveBeenCalled();
-    expect(settings.set).not.toHaveBeenCalled();
+    expect(window.setOpacity).toHaveBeenLastCalledWith(.55);
+    expect(settings.set).toHaveBeenLastCalledWith('windowOpacity', .55);
   });
 
   it('clamps and persists opacity while in desktop mode', async () => {
@@ -129,7 +139,16 @@ describe('desktop window controller', () => {
     await expect(controller.setOpacity(.39)).resolves.toEqual({ mode: 'desktop', opacity: .4 });
 
     expect(window.setOpacity).toHaveBeenLastCalledWith(.4);
-    expect(settings.set).toHaveBeenLastCalledWith('desktopOpacity', .4);
+    expect(settings.set).toHaveBeenLastCalledWith('windowOpacity', .4);
+  });
+
+  it('reports whether Windows used true embedding or compatibility placement', async () => {
+    const { controller, host } = harness();
+    vi.mocked(host.attach).mockResolvedValueOnce({ placement: 'compatible', message: '已进入桌面兼容模式' });
+
+    await expect(controller.enter()).resolves.toEqual({
+      mode: 'desktop', opacity: .85, placement: 'compatible'
+    });
   });
 
   it('exits by detaching first and restores bounds, maximized state and visibility', async () => {
@@ -137,7 +156,7 @@ describe('desktop window controller', () => {
     await controller.enter();
     calls.length = 0;
 
-    await expect(controller.exit()).resolves.toEqual({ mode: 'normal', opacity: 1 });
+    await expect(controller.exit()).resolves.toEqual({ mode: 'normal', opacity: .85 });
 
     expect(calls).toEqual([
       'detach',
@@ -146,10 +165,57 @@ describe('desktop window controller', () => {
       'unmaximize',
       `bounds:${JSON.stringify(bounds)}`,
       'maximize',
-      'opacity:1',
+      'opacity:0.85',
       'show',
       'focus'
     ]);
+  });
+
+  it('opens the external recovery control after entering and closes it after restoring', async () => {
+    const lifecycle: DesktopModeLifecycle = { entered: vi.fn(), exited: vi.fn() };
+    const { controller, host } = harness({ lifecycle });
+
+    await controller.enter();
+
+    expect(lifecycle.entered).toHaveBeenCalledOnce();
+    expect(lifecycle.exited).not.toHaveBeenCalled();
+
+    await controller.restoreVisibleWindow();
+
+    expect(host.detach).toHaveBeenCalledOnce();
+    expect(lifecycle.exited).toHaveBeenCalledOnce();
+  });
+
+  it('rolls back desktop embedding when the external recovery control cannot open', async () => {
+    const lifecycle: DesktopModeLifecycle = {
+      entered: vi.fn(async () => { throw new Error('control failed'); }),
+      exited: vi.fn()
+    };
+    const { controller, host, window } = harness({ lifecycle });
+
+    await expect(controller.enter()).rejects.toThrow('未能嵌入桌面，已恢复普通窗口');
+
+    expect(host.detach).toHaveBeenCalledOnce();
+    expect(window.setSkipTaskbar).toHaveBeenLastCalledWith(false);
+    expect(window.show).toHaveBeenCalled();
+    expect(window.focus).toHaveBeenCalled();
+    expect(lifecycle.exited).toHaveBeenCalledOnce();
+    expect(controller.getState()).toEqual({ mode: 'normal', opacity: .85 });
+  });
+
+  it('performs one native detach for concurrent external recovery requests', async () => {
+    const lifecycle: DesktopModeLifecycle = { entered: vi.fn(), exited: vi.fn() };
+    const { controller, host } = harness({ lifecycle });
+    await controller.enter();
+
+    await Promise.all([
+      controller.restoreVisibleWindow(),
+      controller.restoreVisibleWindow(),
+      controller.restoreVisibleWindow()
+    ]);
+
+    expect(host.detach).toHaveBeenCalledOnce();
+    expect(lifecycle.exited).toHaveBeenCalledOnce();
   });
 
   it('captures Electron normal bounds rather than maximized bounds', async () => {
@@ -195,18 +261,18 @@ describe('desktop window controller', () => {
     const { controller, host, window } = harness({ detachError: new Error('detach failed') });
     await controller.enter();
 
-    await expect(controller.exit()).rejects.toThrow('恢复普通窗口失败，请从托盘重试');
+    await expect(controller.exit()).rejects.toThrow('恢复普通窗口失败，请从托盘重试：detach failed');
 
-    expect(controller.getState()).toEqual({ mode: 'desktop', opacity: 1 });
+    expect(controller.getState()).toEqual({ mode: 'desktop', opacity: .85 });
     expect(host.detach).toHaveBeenCalledWith(42n, 0n, 0x10cf0000n);
     expect(window.setSkipTaskbar).toHaveBeenLastCalledWith(false);
     expect(window.setMenuBarVisibility).toHaveBeenLastCalledWith(true);
-    expect(window.setOpacity).toHaveBeenLastCalledWith(1);
+    expect(window.setOpacity).toHaveBeenLastCalledWith(.85);
     expect(window.show).toHaveBeenCalled();
     expect(window.focus).toHaveBeenCalled();
 
     vi.mocked(host.detach).mockResolvedValueOnce();
-    await expect(controller.restoreVisibleWindow()).resolves.toEqual({ mode: 'normal', opacity: 1 });
+    await expect(controller.restoreVisibleWindow()).resolves.toEqual({ mode: 'normal', opacity: .85 });
     expect(host.detach).toHaveBeenCalledTimes(2);
   });
 
@@ -253,17 +319,17 @@ describe('desktop window controller', () => {
     await expect(Promise.all([firstEnter, secondEnter, exit, opacity])).resolves.toEqual([
       { mode: 'desktop', opacity: .85 },
       { mode: 'desktop', opacity: .85 },
-      { mode: 'normal', opacity: 1 },
-      { mode: 'normal', opacity: 1 }
+      { mode: 'normal', opacity: .85 },
+      { mode: 'normal', opacity: .55 }
     ]);
     expect(host.inspect).toHaveBeenCalledTimes(1);
     expect(host.attach).toHaveBeenCalledTimes(1);
     expect(host.detach).toHaveBeenCalledTimes(1);
-    expect(window.setOpacity).toHaveBeenLastCalledWith(1);
+    expect(window.setOpacity).toHaveBeenLastCalledWith(.55);
   });
 
   it('keeps controller state consistent with real opacity when persistence rejects', async () => {
-    const { controller, window } = harness({ settingsErrorKey: 'desktopOpacity' });
+    const { controller, window } = harness({ settingsErrorKey: 'windowOpacity' });
     await controller.enter();
 
     await expect(controller.setOpacity(.55)).rejects.toThrow('透明度已应用，但未能保存设置');
@@ -332,6 +398,23 @@ describe('desktop host process protocol', () => {
       await result;
       const child = vi.mocked(spawnProcess).mock.results[0]?.value;
       expect(child.kill).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('allows a 12 second cold start by default', async () => {
+    vi.useFakeTimers();
+    try {
+      const spawnProcess = fakeSpawn('', { close: false });
+      const host = new DesktopHostProcess('helper.exe', undefined, spawnProcess as never);
+      const pending = host.attach(42n).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(11_999);
+      expect(vi.mocked(spawnProcess).mock.results[0]?.value.kill).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      const error = await pending;
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe('桌面宿主响应超时');
     } finally {
       vi.useRealTimers();
     }

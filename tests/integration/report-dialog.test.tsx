@@ -31,7 +31,8 @@ function api(overrides: Partial<JournalApi> = {}): JournalApi {
     reports: { exportText: vi.fn().mockResolvedValue('/tmp/report.txt') },
     window: {
       getDesktopState: vi.fn().mockResolvedValue({ mode: 'normal', opacity: 1 }),
-      enterDesktopMode: vi.fn(), exitDesktopMode: vi.fn(), setDesktopOpacity: vi.fn()
+      enterDesktopMode: vi.fn(), exitDesktopMode: vi.fn(), setDesktopOpacity: vi.fn(),
+      onDesktopStateChanged: vi.fn(() => () => undefined)
     },
     ...overrides
   };

@@ -5,12 +5,18 @@ import type { DesktopWindowState, WindowApi } from '../../src/shared/ipc';
 import { WorkbenchToolbar } from '../../src/renderer/features/toolbar/WorkbenchToolbar';
 
 function api(initial: DesktopWindowState = { mode: 'normal', opacity: 1 }): WindowApi {
+  let stateListener: ((state: DesktopWindowState) => void) | undefined;
   return {
     getDesktopState: vi.fn().mockResolvedValue(initial),
     enterDesktopMode: vi.fn().mockResolvedValue({ mode: 'desktop', opacity: .85 }),
     exitDesktopMode: vi.fn().mockResolvedValue({ mode: 'normal', opacity: 1 }),
-    setDesktopOpacity: vi.fn().mockImplementation(async (opacity: number) => ({ mode: 'desktop', opacity }))
-  };
+    setDesktopOpacity: vi.fn().mockImplementation(async (opacity: number) => ({ ...initial, opacity })),
+    onDesktopStateChanged: vi.fn((listener) => {
+      stateListener = listener;
+      return () => { stateListener = undefined; };
+    }),
+    emitDesktopState: (state: DesktopWindowState) => stateListener?.(state)
+  } as WindowApi;
 }
 
 function renderToolbar(windowApi: WindowApi) {
@@ -23,7 +29,19 @@ function renderToolbar(windowApi: WindowApi) {
 }
 
 describe('desktop toolbar controls', () => {
-  it('loads state, disables toggle while entering, then shows the desktop slider', async () => {
+  it('synchronizes state when the tray or recovery control restores the window', async () => {
+    const windowApi = api({ mode: 'desktop', opacity: .65 });
+    const view = renderToolbar(windowApi);
+    expect(await screen.findByRole('button', { name: '恢复窗口' })).toBeVisible();
+
+    (windowApi as WindowApi & { emitDesktopState(state: DesktopWindowState): void })
+      .emitDesktopState({ mode: 'normal', opacity: 1 });
+
+    expect(await screen.findByRole('button', { name: '嵌入桌面' })).toBeVisible();
+    view.unmount();
+  });
+
+  it('loads state, keeps opacity available, then shows the desktop placement', async () => {
     const user = userEvent.setup();
     const windowApi = api();
     let resolve!: (state: DesktopWindowState) => void;
@@ -36,13 +54,28 @@ describe('desktop toolbar controls', () => {
     resolve({ mode: 'desktop', opacity: .85 });
 
     expect(await screen.findByRole('button', { name: '恢复窗口' })).toBeEnabled();
-    expect(screen.getByRole('slider', { name: '桌面透明度' })).toHaveValue('0.85');
+    expect(screen.getByRole('slider', { name: '窗口透明度' })).toHaveValue('0.85');
+  });
+
+  it('allows opacity adjustment and reset in normal mode', async () => {
+    const user = userEvent.setup();
+    const windowApi = api();
+    renderToolbar(windowApi);
+    const slider = await screen.findByRole('slider', { name: '窗口透明度' });
+
+    expect(slider).toHaveValue('1');
+    expect(screen.getByText('100%')).toBeInTheDocument();
+    fireEvent.change(slider, { target: { value: '0.6' } });
+    expect(screen.getByText('60%')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '恢复完全不透明' }));
+
+    await waitFor(() => expect(windowApi.setDesktopOpacity).toHaveBeenCalledWith(1));
   });
 
   it('debounces opacity persistence by 150ms', async () => {
     const windowApi = api({ mode: 'desktop', opacity: .85 });
     renderToolbar(windowApi);
-    const slider = await screen.findByRole('slider', { name: '桌面透明度' });
+    const slider = await screen.findByRole('slider', { name: '窗口透明度' });
     vi.useFakeTimers();
     try {
       fireEvent.change(slider, { target: { value: '0.6' } });
@@ -69,7 +102,20 @@ describe('desktop toolbar controls', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('未能嵌入桌面，已恢复普通窗口');
     await waitFor(() => expect(windowApi.getDesktopState).toHaveBeenCalledTimes(2));
-    expect(screen.queryByRole('slider', { name: '桌面透明度' })).not.toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: '窗口透明度' })).toBeInTheDocument();
+  });
+
+  it('shows compatibility placement returned by Windows', async () => {
+    const user = userEvent.setup();
+    const windowApi = api();
+    vi.mocked(windowApi.enterDesktopMode).mockResolvedValue({
+      mode: 'desktop', opacity: .85, placement: 'compatible'
+    });
+    renderToolbar(windowApi);
+
+    await user.click(await screen.findByRole('button', { name: '嵌入桌面' }));
+
+    expect(await screen.findByText('桌面兼容模式')).toBeInTheDocument();
   });
 
   it('passes through a recoverable exit failure with an actionable tray retry message', async () => {

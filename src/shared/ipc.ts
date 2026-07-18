@@ -95,6 +95,7 @@ export interface ReportApi {
 export interface DesktopWindowState {
   mode: 'normal' | 'desktop';
   opacity: number;
+  placement?: 'embedded' | 'compatible';
 }
 
 export interface WindowApi {
@@ -102,6 +103,7 @@ export interface WindowApi {
   enterDesktopMode(): Promise<DesktopWindowState>;
   exitDesktopMode(): Promise<DesktopWindowState>;
   setDesktopOpacity(opacity: number): Promise<DesktopWindowState>;
+  onDesktopStateChanged(listener: (state: DesktopWindowState) => void): () => void;
 }
 
 export interface JournalApi {

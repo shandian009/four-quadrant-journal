@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { JournalApi } from '../shared/ipc';
+import type { DesktopWindowState, JournalApi } from '../shared/ipc';
 
 const journalApi: JournalApi = {
   app: {
@@ -46,7 +46,12 @@ const journalApi: JournalApi = {
     getDesktopState: () => ipcRenderer.invoke('window:getDesktopState'),
     enterDesktopMode: () => ipcRenderer.invoke('window:enterDesktopMode'),
     exitDesktopMode: () => ipcRenderer.invoke('window:exitDesktopMode'),
-    setDesktopOpacity: (opacity) => ipcRenderer.invoke('window:setDesktopOpacity', opacity)
+    setDesktopOpacity: (opacity) => ipcRenderer.invoke('window:setDesktopOpacity', opacity),
+    onDesktopStateChanged: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: DesktopWindowState) => listener(state);
+      ipcRenderer.on('window:desktopStateChanged', handler);
+      return () => ipcRenderer.removeListener('window:desktopStateChanged', handler);
+    }
   }
 };
 
