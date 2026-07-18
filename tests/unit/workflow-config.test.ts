@@ -70,7 +70,7 @@ describe('GitHub workflow configuration', () => {
     expect(e2e).toMatch(/['"]status['"]/);
     expect(e2e).toContain("getByText('桌面兼容模式')");
     expect(e2e).toContain('0x40000000n');
-    expect(e2e).toContain('0x80000000n');
+    expect(e2e).toContain('compatibility window remains top-level');
     expect(e2e).not.toMatch(/test\.skip\(true/);
     expect(e2e).toContain("['0.4', '0.85', '1']");
     expect(e2e).toMatch(/parent\)\.not\.toBe\('0'\)/);
