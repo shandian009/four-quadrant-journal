@@ -23,7 +23,7 @@ interface HostStatus {
 
 async function nativeWindowState(application: ElectronApplication): Promise<NativeWindowState> {
   return application.evaluate(({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0];
+    const window = BrowserWindow.getAllWindows().find((candidate) => candidate.getTitle() === '四象日志');
     if (!window) throw new Error('找不到应用窗口');
     const handle = window.getNativeWindowHandle();
     return {
