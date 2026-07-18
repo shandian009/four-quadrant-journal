@@ -144,8 +144,18 @@ if (!hasLock) {
       settingsRepository,
       new DesktopHostProcess(helperPath),
       {
-        entered: () => desktopRecoveryControl?.show(),
-        exited: () => desktopRecoveryControl?.close()
+        entered: async () => {
+          await desktopRecoveryControl?.show();
+          if (!controlledWindow.webContents.isDestroyed()) {
+            controlledWindow.webContents.send('window:desktopStateChanged', windowController?.getState());
+          }
+        },
+        exited: () => {
+          desktopRecoveryControl?.close();
+          if (!controlledWindow.webContents.isDestroyed()) {
+            controlledWindow.webContents.send('window:desktopStateChanged', windowController?.getState());
+          }
+        }
       }
     );
     windowActivationController = new WindowActivationController(windowController, {

@@ -119,11 +119,11 @@ test('desktop mode attaches the real window, applies opacity and restores safely
     }
 
     await recoveryPage.getByRole('button', { name: '恢复并编辑' }).click();
-    await expect(page.getByRole('button', { name: '嵌入桌面' })).toBeVisible({ timeout: 10_000 });
     await expect.poll(() => recoveryPage.isClosed()).toBe(true);
     await expect.poll(() => getHostStatus(helperPath, attachedWindow.hwnd).parent).toBe(initialHostState.parent);
     expect(getHostStatus(helperPath, attachedWindow.hwnd).style).toBe(initialHostState.style);
     await expect.poll(async () => (await nativeWindowState(application!)).opacity).toBe(1);
+    await expect(page.getByRole('button', { name: '嵌入桌面' })).toBeVisible({ timeout: 10_000 });
 
     await application.close();
     application = await launchPackagedApp(userData);

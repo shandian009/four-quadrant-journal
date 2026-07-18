@@ -44,6 +44,12 @@ export function WorkbenchToolbar({
   useEffect(() => {
     if (!windowApi) return;
     let active = true;
+    const unsubscribe = windowApi.onDesktopStateChanged((state) => {
+      if (!active) return;
+      setDesktopState(state);
+      setDesktopPending(false);
+      setDesktopError(null);
+    });
     setDesktopPending(true);
     void windowApi.getDesktopState()
       .then((state) => { if (active) setDesktopState(state); })
@@ -51,6 +57,7 @@ export function WorkbenchToolbar({
       .finally(() => { if (active) setDesktopPending(false); });
     return () => {
       active = false;
+      unsubscribe();
       if (opacityTimer.current) clearTimeout(opacityTimer.current);
     };
   }, [windowApi]);

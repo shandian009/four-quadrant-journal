@@ -5,12 +5,18 @@ import type { DesktopWindowState, WindowApi } from '../../src/shared/ipc';
 import { WorkbenchToolbar } from '../../src/renderer/features/toolbar/WorkbenchToolbar';
 
 function api(initial: DesktopWindowState = { mode: 'normal', opacity: 1 }): WindowApi {
+  let stateListener: ((state: DesktopWindowState) => void) | undefined;
   return {
     getDesktopState: vi.fn().mockResolvedValue(initial),
     enterDesktopMode: vi.fn().mockResolvedValue({ mode: 'desktop', opacity: .85 }),
     exitDesktopMode: vi.fn().mockResolvedValue({ mode: 'normal', opacity: 1 }),
-    setDesktopOpacity: vi.fn().mockImplementation(async (opacity: number) => ({ ...initial, opacity }))
-  };
+    setDesktopOpacity: vi.fn().mockImplementation(async (opacity: number) => ({ ...initial, opacity })),
+    onDesktopStateChanged: vi.fn((listener) => {
+      stateListener = listener;
+      return () => { stateListener = undefined; };
+    }),
+    emitDesktopState: (state: DesktopWindowState) => stateListener?.(state)
+  } as WindowApi;
 }
 
 function renderToolbar(windowApi: WindowApi) {
@@ -23,6 +29,18 @@ function renderToolbar(windowApi: WindowApi) {
 }
 
 describe('desktop toolbar controls', () => {
+  it('synchronizes state when the tray or recovery control restores the window', async () => {
+    const windowApi = api({ mode: 'desktop', opacity: .65 });
+    const view = renderToolbar(windowApi);
+    expect(await screen.findByRole('button', { name: '恢复窗口' })).toBeVisible();
+
+    (windowApi as WindowApi & { emitDesktopState(state: DesktopWindowState): void })
+      .emitDesktopState({ mode: 'normal', opacity: 1 });
+
+    expect(await screen.findByRole('button', { name: '嵌入桌面' })).toBeVisible();
+    view.unmount();
+  });
+
   it('loads state, keeps opacity available, then shows the desktop placement', async () => {
     const user = userEvent.setup();
     const windowApi = api();

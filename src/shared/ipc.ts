@@ -103,6 +103,7 @@ export interface WindowApi {
   enterDesktopMode(): Promise<DesktopWindowState>;
   exitDesktopMode(): Promise<DesktopWindowState>;
   setDesktopOpacity(opacity: number): Promise<DesktopWindowState>;
+  onDesktopStateChanged(listener: (state: DesktopWindowState) => void): () => void;
 }
 
 export interface JournalApi {

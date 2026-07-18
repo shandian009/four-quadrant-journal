@@ -20,7 +20,8 @@ function api(): JournalApi {
     reports: { exportText: vi.fn() },
     window: {
       getDesktopState: vi.fn().mockResolvedValue({ mode: 'desktop', opacity: .85 }),
-      enterDesktopMode: vi.fn(), exitDesktopMode: vi.fn().mockResolvedValue({ mode: 'normal', opacity: 1 }), setDesktopOpacity: vi.fn()
+      enterDesktopMode: vi.fn(), exitDesktopMode: vi.fn().mockResolvedValue({ mode: 'normal', opacity: 1 }), setDesktopOpacity: vi.fn(),
+      onDesktopStateChanged: vi.fn(() => () => undefined)
     }
   };
 }
