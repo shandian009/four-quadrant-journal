@@ -1,13 +1,13 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 
-const sendToHost = vi.hoisted(() => vi.fn());
-vi.mock('electron', () => ({ ipcRenderer: { sendToHost } }));
+const send = vi.hoisted(() => vi.fn());
+vi.mock('electron', () => ({ ipcRenderer: { send } }));
 
 import '../../src/main/recovery-preload';
 
 beforeEach(() => {
   document.body.innerHTML = '<button id="restore" type="button">恢复并编辑</button>';
-  sendToHost.mockClear();
+  send.mockClear();
 });
 
 it('sends the restricted desktop recovery message when the control button is clicked', () => {
@@ -15,6 +15,6 @@ it('sends the restricted desktop recovery message when the control button is cli
 
   document.getElementById('restore')?.click();
 
-  expect(sendToHost).toHaveBeenCalledOnce();
-  expect(sendToHost).toHaveBeenCalledWith('desktop-recovery:restore');
+  expect(send).toHaveBeenCalledOnce();
+  expect(send).toHaveBeenCalledWith('desktop-recovery:restore');
 });

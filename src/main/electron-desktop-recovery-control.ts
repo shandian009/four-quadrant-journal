@@ -1,12 +1,12 @@
-import { BrowserWindow, screen, type BrowserWindowConstructorOptions } from 'electron';
+import { BrowserWindow, ipcMain, screen, type BrowserWindowConstructorOptions } from 'electron';
 import path from 'node:path';
 import type {
   RecoveryControlEnvironment,
   RecoveryControlWindowPort
 } from './desktop-recovery-control';
 import type { WindowBounds } from './window-control';
+import { registerScopedRecoveryIpc } from './recovery-ipc';
 
-const RECOVERY_IPC_CHANNEL = 'desktop-recovery:restore';
 const CONTROL_HTML = `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -90,12 +90,12 @@ class ElectronRecoveryControlWindow implements RecoveryControlWindowPort {
     window.setAlwaysOnTop(true, 'floating');
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', (event) => event.preventDefault());
-    window.webContents.on('ipc-message', (_event, channel) => {
-      if (channel !== RECOVERY_IPC_CHANNEL) return;
+    const unsubscribeRecoveryIpc = registerScopedRecoveryIpc(ipcMain, window.webContents, () => {
       void this.triggerRestore().catch((error: unknown) => {
         console.error('桌面模式恢复失败', error);
       });
     });
+    window.once('closed', unsubscribeRecoveryIpc);
   }
 
   load(): Promise<void> {
