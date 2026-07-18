@@ -4,17 +4,6 @@ const CONTROL_WIDTH = 340;
 const CONTROL_HEIGHT = 88;
 const CONTROL_MARGIN = 18;
 
-export function isRecoveryControlUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'fqj-recovery:'
-      && url.hostname === 'restore'
-      && (url.pathname === '' || url.pathname === '/');
-  } catch {
-    return false;
-  }
-}
-
 export interface RecoveryControlWindowPort {
   load(): Promise<void>;
   showInactive(): void;

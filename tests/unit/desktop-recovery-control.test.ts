@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   DesktopRecoveryControl,
-  isRecoveryControlUrl,
   type RecoveryControlEnvironment,
   type RecoveryControlWindowPort
 } from '../../src/main/desktop-recovery-control';
@@ -51,14 +50,6 @@ function harness(options: { loadError?: Error; restoreError?: Error } = {}) {
 }
 
 describe('desktop recovery control', () => {
-  it('accepts Electron-normalized recovery links and rejects unrelated navigation', () => {
-    expect(isRecoveryControlUrl('fqj-recovery://restore')).toBe(true);
-    expect(isRecoveryControlUrl('fqj-recovery://restore/')).toBe(true);
-    expect(isRecoveryControlUrl('fqj-recovery://restore/anything')).toBe(false);
-    expect(isRecoveryControlUrl('https://restore/')).toBe(false);
-    expect(isRecoveryControlUrl('not a url')).toBe(false);
-  });
-
   it('creates one external control and positions it at the current display bottom right', async () => {
     const { control, environment, window } = harness();
 

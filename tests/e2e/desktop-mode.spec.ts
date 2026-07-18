@@ -87,7 +87,7 @@ test('desktop mode attaches the real window, applies opacity and restores safely
     const recoveryPage = await recoveryWindowPromise;
     await expect(page.getByRole('button', { name: '恢复窗口' })).toBeVisible({ timeout: 10_000 });
     await expect(recoveryPage.getByText('四象日志已嵌入桌面')).toBeVisible({ timeout: 10_000 });
-    await expect(recoveryPage.getByRole('link', { name: '恢复并编辑' })).toBeVisible();
+    await expect(recoveryPage.getByRole('button', { name: '恢复并编辑' })).toBeVisible();
 
     const attachedWindow = await nativeWindowState(application);
     const attachedHostState = getHostStatus(helperPath, attachedWindow.hwnd);
@@ -118,7 +118,7 @@ test('desktop mode attaches the real window, applies opacity and restores safely
       await expect.poll(async () => (await nativeWindowState(application!)).opacity).toBe(Number(value));
     }
 
-    await recoveryPage.getByRole('link', { name: '恢复并编辑' }).click();
+    await recoveryPage.getByRole('button', { name: '恢复并编辑' }).click();
     await expect(page.getByRole('button', { name: '嵌入桌面' })).toBeVisible({ timeout: 10_000 });
     await expect.poll(() => recoveryPage.isClosed()).toBe(true);
     await expect.poll(() => getHostStatus(helperPath, attachedWindow.hwnd).parent).toBe(initialHostState.parent);

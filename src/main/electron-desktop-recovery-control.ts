@@ -1,12 +1,12 @@
 import { BrowserWindow, screen, type BrowserWindowConstructorOptions } from 'electron';
+import path from 'node:path';
 import type {
   RecoveryControlEnvironment,
   RecoveryControlWindowPort
 } from './desktop-recovery-control';
-import { isRecoveryControlUrl } from './desktop-recovery-control';
 import type { WindowBounds } from './window-control';
 
-const RECOVERY_URL = 'fqj-recovery://restore';
+const RECOVERY_IPC_CHANNEL = 'desktop-recovery:restore';
 const CONTROL_HTML = `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -28,7 +28,7 @@ const CONTROL_HTML = `<!doctype html>
     .status { min-width: 0; flex: 1; }
     .title { font-size: 15px; font-weight: 700; letter-spacing: .02em; }
     .hint { margin-top: 5px; color: #a8bdce; font-size: 12px; white-space: nowrap; }
-    a {
+    button {
       flex: none;
       display: inline-flex;
       align-items: center;
@@ -41,10 +41,11 @@ const CONTROL_HTML = `<!doctype html>
       border-radius: 10px;
       font-size: 14px;
       font-weight: 700;
-      text-decoration: none;
+      border: 0;
+      cursor: pointer;
       box-shadow: 0 8px 20px rgba(38, 181, 205, .24);
     }
-    a[aria-disabled="true"] { opacity: .62; pointer-events: none; }
+    button:disabled { opacity: .62; pointer-events: none; }
   </style>
 </head>
 <body>
@@ -53,7 +54,7 @@ const CONTROL_HTML = `<!doctype html>
       <div class="title">四象日志已嵌入桌面</div>
       <div class="hint">需要设置或编辑时，请先恢复窗口</div>
     </div>
-    <a id="restore" href="${RECOVERY_URL}">恢复并编辑</a>
+    <button id="restore" type="button">恢复并编辑</button>
   </main>
 </body>
 </html>`;
@@ -73,6 +74,7 @@ export function createRecoveryControlWindowOptions(): BrowserWindowConstructorOp
     alwaysOnTop: true,
     backgroundColor: '#00000000',
     webPreferences: {
+      preload: path.join(__dirname, 'recovery-preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true
@@ -87,9 +89,9 @@ class ElectronRecoveryControlWindow implements RecoveryControlWindowPort {
   constructor(private readonly window: BrowserWindow) {
     window.setAlwaysOnTop(true, 'floating');
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    window.webContents.on('will-navigate', (event, url) => {
-      if (!isRecoveryControlUrl(url)) return;
-      event.preventDefault();
+    window.webContents.on('will-navigate', (event) => event.preventDefault());
+    window.webContents.on('ipc-message', (_event, channel) => {
+      if (channel !== RECOVERY_IPC_CHANNEL) return;
       void this.triggerRestore().catch((error: unknown) => {
         console.error('桌面模式恢复失败', error);
       });
@@ -140,7 +142,7 @@ class ElectronRecoveryControlWindow implements RecoveryControlWindowPort {
     if (this.window.isDestroyed()) return;
     const label = restoring ? '正在恢复…' : '恢复并编辑';
     await this.window.webContents.executeJavaScript(
-      `(() => { const button = document.getElementById('restore'); if (button) { button.textContent = ${JSON.stringify(label)}; button.setAttribute('aria-disabled', ${JSON.stringify(String(restoring))}); } })()`
+      `(() => { const button = document.getElementById('restore'); if (button) { button.textContent = ${JSON.stringify(label)}; button.disabled = ${JSON.stringify(restoring)}; } })()`
     );
   }
 }
