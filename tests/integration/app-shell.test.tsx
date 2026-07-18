@@ -60,7 +60,7 @@ describe('application shell', () => {
     render(<App api={api()} />);
 
     expect(await screen.findByRole('button', { name: '恢复窗口' })).toBeVisible();
-    expect(screen.getByRole('slider', { name: '桌面透明度' })).toBeVisible();
+    expect(screen.getByRole('slider', { name: '窗口透明度' })).toBeVisible();
     expect(screen.getByRole('navigation', { name: '主导航' })).toBeVisible();
     expect(screen.getByRole('button', { name: '四象限' })).toBeVisible();
   });

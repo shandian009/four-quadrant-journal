@@ -26,10 +26,14 @@ export interface SettingsPort {
 }
 
 export interface DesktopRecoveryToken { originalParent: bigint; originalStyle: bigint }
+export interface DesktopAttachResult {
+  placement: 'embedded' | 'compatible';
+  message: string;
+}
 
 export interface DesktopHostPort {
   inspect(hwnd: bigint): Promise<DesktopRecoveryToken>;
-  attach(hwnd: bigint): Promise<void>;
+  attach(hwnd: bigint): Promise<DesktopAttachResult>;
   detach(hwnd: bigint, originalParent: bigint, originalStyle: bigint): Promise<void>;
 }
 
@@ -88,10 +92,13 @@ export class WindowController {
       await this.settings.set('desktopNormalMaximized', this.normalMaximized);
       this.window.setSkipTaskbar(true);
       this.window.setMenuBarVisibility(false);
-      await this.host.attach(hwnd);
-      const opacity = clampDesktopOpacity(await this.settings.get('desktopOpacity', .85));
+      const attached = await this.host.attach(hwnd);
+      const legacyOpacity = await this.settings.get('desktopOpacity', .85);
+      const opacity = clampDesktopOpacity(await this.settings.get('windowOpacity', legacyOpacity));
       this.window.setOpacity(opacity);
-      this.state = { mode: 'desktop', opacity };
+      this.state = attached.placement === 'compatible'
+        ? { mode: 'desktop', opacity, placement: 'compatible' }
+        : { mode: 'desktop', opacity };
       return this.getState();
     } catch (error) {
       try {
@@ -113,12 +120,11 @@ export class WindowController {
   }
 
   private async setOpacityNow(value: unknown): Promise<DesktopWindowState> {
-    if (this.state.mode !== 'desktop') return this.getState();
     const opacity = clampDesktopOpacity(value);
     this.window.setOpacity(opacity);
-    this.state = { mode: 'desktop', opacity };
+    this.state = { ...this.state, opacity };
     try {
-      await this.settings.set('desktopOpacity', opacity);
+      await this.settings.set('windowOpacity', opacity);
     } catch (error) {
       throw new Error(OPACITY_NOT_PERSISTED_MESSAGE, { cause: error });
     }
@@ -133,14 +139,13 @@ export class WindowController {
     const token = this.recoveryToken;
     if (!token) {
       this.ensureVisible();
-      this.state = { mode: 'normal', opacity: 1 };
+      this.state = { mode: 'normal', opacity: this.state.opacity };
       return;
     }
     try {
       await this.host.detach(hwnd, token.originalParent, token.originalStyle);
     } catch (error) {
       this.ensureVisible();
-      this.state = { mode: 'desktop', opacity: 1 };
       throw new Error(RECOVERY_FAILED_MESSAGE, { cause: error });
     }
     this.window.setSkipTaskbar(false);
@@ -148,19 +153,20 @@ export class WindowController {
     this.window.unmaximize();
     if (this.normalBounds) this.window.setBounds(this.normalBounds);
     if (this.normalMaximized) this.window.maximize();
-    this.window.setOpacity(1);
+    const opacity = this.state.opacity;
+    this.window.setOpacity(opacity);
     this.window.show();
     this.window.focus();
     this.recoveryToken = null;
     this.normalBounds = null;
     this.normalMaximized = false;
-    this.state = { mode: 'normal', opacity: 1 };
+    this.state = { mode: 'normal', opacity };
   }
 
   private ensureVisible(showAndFocus = true): void {
     this.window.setSkipTaskbar(false);
     this.window.setMenuBarVisibility(true);
-    this.window.setOpacity(1);
+    this.window.setOpacity(this.state.opacity);
     if (showAndFocus) {
       this.window.show();
       this.window.focus();
@@ -187,7 +193,8 @@ const inspectResponseSchema = z.strictObject({
 });
 const attachResponseSchema = z.strictObject({
   success: z.literal(true),
-  parent: positiveIntegerText,
+  parent: nonNegativeIntegerText,
+  placement: z.enum(['embedded', 'compatible']),
   message: z.string()
 });
 const detachResponseSchema = z.strictObject({
@@ -201,7 +208,7 @@ const MAX_HELPER_OUTPUT_BYTES = 64 * 1024;
 export class DesktopHostProcess implements DesktopHostPort {
   constructor(
     private readonly executable: string,
-    private readonly timeoutMs = 3_000,
+    private readonly timeoutMs = 12_000,
     private readonly spawnProcess: typeof spawn = spawn
   ) {}
 
@@ -210,8 +217,9 @@ export class DesktopHostProcess implements DesktopHostPort {
     return { originalParent: BigInt(response.originalParent), originalStyle: BigInt(response.originalStyle) };
   }
 
-  async attach(hwnd: bigint): Promise<void> {
-    attachResponseSchema.parse(await this.run(['attach', positiveHandle(hwnd)]));
+  async attach(hwnd: bigint): Promise<DesktopAttachResult> {
+    const response = attachResponseSchema.parse(await this.run(['attach', positiveHandle(hwnd)]));
+    return { placement: response.placement, message: response.message };
   }
 
   async detach(hwnd: bigint, originalParent: bigint, originalStyle: bigint): Promise<void> {

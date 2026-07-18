@@ -95,6 +95,7 @@ export interface ReportApi {
 export interface DesktopWindowState {
   mode: 'normal' | 'desktop';
   opacity: number;
+  placement?: 'embedded' | 'compatible';
 }
 
 export interface WindowApi {

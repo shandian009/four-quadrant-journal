@@ -48,4 +48,14 @@ describe('desktop package configuration', () => {
     expect(source).toMatch(/GetParentChecked\(hwnd\) != originalParent/);
     expect(source).toMatch(/GetStyleChecked\(hwnd\) != originalStyle/);
   });
+
+  it('uses correct child styles, retries Explorer discovery and has a bottom-layer fallback', () => {
+    const source = readFileSync('native/desktop-host/Program.cs', 'utf8');
+    expect(source).toMatch(/WsChild/);
+    expect(source).toMatch(/WsPopup/);
+    expect(source).toMatch(/Thread\.Sleep/);
+    expect(source).toMatch(/FindDesktopTarget/);
+    expect(source).toMatch(/HwndBottom/);
+    expect(source).toMatch(/placement = "compatible"/);
+  });
 });

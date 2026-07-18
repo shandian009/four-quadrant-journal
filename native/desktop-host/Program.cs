@@ -3,12 +3,16 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading;
 
 internal static class Program
 {
     private const int GwlStyle = -16;
     private const long WsCaption = 0x00C00000L;
     private const long WsThickFrame = 0x00040000L;
+    private const long WsChild = 0x40000000L;
+    private const long WsPopup = 0x80000000L;
+    private static readonly nint HwndBottom = new(1);
     private const uint SmtoNormal = 0x0000;
     private const uint SwpNoMove = 0x0002;
     private const uint SwpNoSize = 0x0001;
@@ -89,29 +93,60 @@ internal static class Program
         if (progman == 0) return Fail("找不到 Progman");
         SendMessageTimeout(progman, 0x052C, 0, 0, SmtoNormal, 1000, out _);
 
-        nint worker = 0;
-        EnumWindows((top, _) =>
-        {
-            if (FindWindowEx(top, 0, "SHELLDLL_DefView", null) == 0) return true;
-            worker = FindWindowEx(0, top, "WorkerW", null);
-            return worker == 0;
-        }, 0);
-        if (worker == 0) return Fail("找不到 WorkerW 桌面层");
-
         nint originalStyle = GetStyleChecked(hwnd);
-        nint desktopStyle = new(originalStyle.ToInt64() & ~WsCaption & ~WsThickFrame);
-        SetStyleChecked(hwnd, desktopStyle);
-        SetWindowPosChecked(hwnd);
-        SetParentChecked(hwnd, worker);
-        if (GetParentChecked(hwnd) != worker || GetStyleChecked(hwnd) != desktopStyle)
-            throw new InvalidOperationException("未能验证 WorkerW 嵌入结果");
+        nint worker = FindDesktopTarget();
+        if (worker != 0)
+        {
+            nint desktopStyle = new((originalStyle.ToInt64() & ~WsCaption & ~WsThickFrame & ~WsPopup) | WsChild);
+            SetStyleChecked(hwnd, desktopStyle);
+            SetParentChecked(hwnd, worker);
+            SetWindowPosChecked(hwnd, 0, false);
+            if (GetParentChecked(hwnd) != worker || GetStyleChecked(hwnd) != desktopStyle)
+                throw new InvalidOperationException("未能验证 WorkerW 嵌入结果");
+
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                success = true,
+                parent = worker.ToInt64().ToString(),
+                placement = "embedded",
+                message = "已嵌入 Windows 桌面层"
+            }));
+            return 0;
+        }
+
+        // Some Explorer builds and managed desktops never expose the undocumented
+        // WorkerW sibling. Keep a reliable desktop-like mode instead of failing.
+        nint compatibleStyle = new((originalStyle.ToInt64() & ~WsCaption & ~WsThickFrame & ~WsChild) | WsPopup);
+        SetParentChecked(hwnd, 0);
+        SetStyleChecked(hwnd, compatibleStyle);
+        SetWindowPosChecked(hwnd, HwndBottom, true);
+        if (GetParentChecked(hwnd) != 0 || GetStyleChecked(hwnd) != compatibleStyle)
+            throw new InvalidOperationException("未能验证桌面兼容模式");
 
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             success = true,
-            parent = worker.ToInt64().ToString(),
-            message = "已嵌入桌面"
+            parent = "0",
+            placement = "compatible",
+            message = "找不到 WorkerW，已进入桌面兼容模式"
         }));
+        return 0;
+    }
+
+    private static nint FindDesktopTarget()
+    {
+        for (int attempt = 0; attempt < 40; attempt++)
+        {
+            nint worker = 0;
+            EnumWindows((top, _) =>
+            {
+                if (FindWindowEx(top, 0, "SHELLDLL_DefView", null) == 0) return true;
+                worker = FindWindowEx(0, top, "WorkerW", null);
+                return worker == 0;
+            }, 0);
+            if (worker != 0) return worker;
+            Thread.Sleep(100);
+        }
         return 0;
     }
 
@@ -125,7 +160,7 @@ internal static class Program
 
         SetParentChecked(hwnd, originalParent);
         SetStyleChecked(hwnd, originalStyle);
-        SetWindowPosChecked(hwnd);
+        SetWindowPosChecked(hwnd, 0, false);
         if (GetParentChecked(hwnd) != originalParent)
             throw new InvalidOperationException("最终父窗口验证失败");
         if (GetStyleChecked(hwnd) != originalStyle)
@@ -191,10 +226,12 @@ internal static class Program
         if (GetStyleChecked(hwnd) != style) throw new InvalidOperationException("SetWindowLongPtr 最终值不匹配");
     }
 
-    private static void SetWindowPosChecked(nint hwnd)
+    private static void SetWindowPosChecked(nint hwnd, nint insertAfter, bool updateZOrder)
     {
         Marshal.SetLastPInvokeError(0);
-        if (!SetWindowPos(hwnd, 0, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoZOrder | SwpFrameChanged))
+        uint flags = SwpNoMove | SwpNoSize | SwpFrameChanged;
+        if (!updateZOrder) flags |= SwpNoZOrder;
+        if (!SetWindowPos(hwnd, insertAfter, 0, 0, 0, 0, flags))
             ThrowWin32("SetWindowPos", Marshal.GetLastPInvokeError());
     }
 

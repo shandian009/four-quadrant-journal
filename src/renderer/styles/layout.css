@@ -50,6 +50,9 @@
 .workbench-toolbar__theme-check { color: var(--accent); font-weight: 800; }
 .workbench-toolbar__opacity { min-height: 32px; display: inline-flex; align-items: center; gap: 7px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-gradient); color: var(--text-muted); font-size: 12px; }
 .workbench-toolbar__opacity input[type="range"] { width: 92px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.workbench-toolbar__opacity output { min-width: 34px; color: var(--text); font-variant-numeric: tabular-nums; }
+.workbench-toolbar__opacity button { min-height: 24px; padding: 2px 6px; font-size: 11px; }
+.workbench-toolbar__placement { min-height: 32px; display: inline-flex; align-items: center; padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; color: var(--accent); background: var(--accent-soft); font-size: 12px; }
 .workbench-toolbar [role="alert"] { flex-basis: 100%; color: var(--danger); font-size: 12px; text-align: right; }
 .dashboard-grid { height: calc(100% - 62px); display: grid; grid-template-columns: 1.04fr 1fr .9fr; grid-template-rows: minmax(360px, 1.1fr) minmax(275px, .8fr); gap: 16px; }
 .task-workspace { display: contents; }

@@ -81,7 +81,7 @@ export function WorkbenchToolbar({
   async function refreshAfterError(error: unknown) {
     const errorMessage = error instanceof Error ? error.message : '';
     const message = errorMessage.includes('未能嵌入桌面')
-      ? '未能嵌入桌面，已恢复普通窗口'
+      ? errorMessage.slice(errorMessage.indexOf('未能嵌入桌面'))
       : errorMessage.includes('恢复失败') || errorMessage.includes('请从托盘重试')
         ? '恢复失败，请从托盘重试'
         : '窗口操作失败，请重试';
@@ -105,14 +105,21 @@ export function WorkbenchToolbar({
   }
 
   function changeOpacity(value: number) {
-    if (!windowApi || desktopState.mode !== 'desktop') return;
-    setDesktopState({ mode: 'desktop', opacity: value });
+    if (!windowApi) return;
+    setDesktopState((state) => ({ ...state, opacity: value }));
     if (opacityTimer.current) clearTimeout(opacityTimer.current);
     opacityTimer.current = setTimeout(() => {
       void windowApi.setDesktopOpacity(value)
         .then(setDesktopState)
         .catch(refreshAfterError);
     }, 150);
+  }
+
+  function resetOpacity() {
+    if (!windowApi) return onOpacityChange?.();
+    if (opacityTimer.current) clearTimeout(opacityTimer.current);
+    setDesktopState((state) => ({ ...state, opacity: 1 }));
+    void windowApi.setDesktopOpacity(1).then(setDesktopState).catch(refreshAfterError);
   }
 
   return (
@@ -154,19 +161,24 @@ export function WorkbenchToolbar({
         disabled={windowApi ? desktopPending : !onToggleDesktop}
         onClick={() => void toggleDesktop()}
       >{desktopState.mode === 'desktop' ? '恢复窗口' : '嵌入桌面'}</button>
-      {windowApi && desktopState.mode === 'desktop' ? (
-        <label className="workbench-toolbar__opacity">
+      {desktopState.mode === 'desktop' && desktopState.placement === 'compatible' && (
+        <span className="workbench-toolbar__placement" title="系统未开放 WorkerW，已自动置于桌面底层">桌面兼容模式</span>
+      )}
+      {windowApi ? (
+        <div className="workbench-toolbar__opacity">
           <span>透明度</span>
           <input
             type="range"
-            aria-label="桌面透明度"
+            aria-label="窗口透明度"
             min="0.4"
             max="1"
             step="0.05"
             value={desktopState.opacity}
             onChange={(event) => changeOpacity(Number(event.currentTarget.value))}
           />
-        </label>
+          <output>{Math.round(desktopState.opacity * 100)}%</output>
+          <button type="button" aria-label="恢复完全不透明" disabled={desktopState.opacity === 1} onClick={resetOpacity}>重置</button>
+        </div>
       ) : !windowApi ? (
         <button type="button" disabled={!onOpacityChange} onClick={onOpacityChange}>透明度</button>
       ) : null}
